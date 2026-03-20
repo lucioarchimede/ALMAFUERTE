@@ -88,7 +88,10 @@ export const getDashboardStats = (family, payments) => {
   let totalPaid = 0;
   const pendingPayments = payments.filter(p => p.estado === 'pendiente').length;
 
-  for (const child of family.children) {
+  // Skip children with 100% scholarship (cuota === 0) — they owe nothing
+  const payingChildren = family.children.filter(c => (c.cuota || 0) > 0);
+
+  for (const child of payingChildren) {
     for (const month of dueMonths) {
       totalDue++;
       const s = getMonthStatus(child.id, month, payments);
@@ -98,7 +101,7 @@ export const getDashboardStats = (family, payments) => {
 
   let nextDueMonth = null;
   for (const m of MONTHS.map(m => m.num)) {
-    const allPaid = family.children.every(child => getMonthStatus(child.id, m, payments) !== null);
+    const allPaid = payingChildren.every(child => getMonthStatus(child.id, m, payments) !== null);
     if (!allPaid) { nextDueMonth = m; break; }
   }
 

@@ -64,6 +64,10 @@ const parseDate = (dateStr) => {
 
 const byDateDesc = (a, b) => parseDate(b.fecha) - parseDate(a.fecha);
 
+const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+const famLabel = (id) => id ? `FAM-${id}` : '';
+
 // ─── Shared micro-components ──────────────────────────────────────────────────
 
 function StatusBadge({ estado }) {
@@ -208,6 +212,7 @@ export default function AdminView({
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('todos');
   const [studentSearch, setStudentSearch] = useState('');
+  const [bulkConfirm, setBulkConfirm] = useState(null); // null | { type: 'verify'|'reopen', count, payments }
 
   // ── Helpers ──
 
@@ -244,18 +249,20 @@ export default function AdminView({
   const kpis = useMemo(() => {
     const recaudado = payments.filter(p => p.estado === 'verificado').reduce((s, p) => s + (p.monto || 0), 0);
     const pendiente = payments.filter(p => p.estado === 'pendiente').reduce((s, p) => s + (p.monto || 0), 0);
-    let conDeuda = 0, deudaTotal = 0;
+    const familiesWithDebt = new Set();
+    let deudaTotal = 0;
     for (const st of allStudents) {
-      let hasDebt = false;
+      const cuota = getCuota(st);
+      if (cuota <= 0) continue; // skip 100% beca students ($0 fee)
       for (const mes of dueMonths) {
         if (gs(st.legajo, mes) === 'no') {
-          hasDebt = true;
-          deudaTotal += getCuota(st);
+          deudaTotal += cuota;
+          familiesWithDebt.add(st.familiaId);
         }
       }
-      if (hasDebt) conDeuda++;
     }
-    return { recaudado, pendiente, conDeuda, deudaTotal };
+    const totalFamilias = new Set(allStudents.map(s => s.familiaId).filter(Boolean)).size;
+    return { recaudado, pendiente, conDeuda: familiesWithDebt.size, totalFamilias, deudaTotal };
   }, [payments, allStudents, gs, getCuota, dueMonths]);
 
   const monthlyRevenue = useMemo(() => {
@@ -268,18 +275,87 @@ export default function AdminView({
   }, [payments]);
 
   const debtors = useMemo(() => {
-    return allStudents.map(st => {
-      const owedMonths = dueMonths.filter(mes => gs(st.legajo, mes) === 'no');
-      return { ...st, owedMonths, total: owedMonths.length * getCuota(st) };
-    }).filter(s => s.owedMonths.length > 0).sort((a, b) => b.total - a.total);
+    // Group by family; skip students with $0 fee (100% beca)
+    const familyMap = {};
+    for (const student of allStudents) {
+      const cuota = getCuota(student);
+      if (cuota <= 0) continue;
+      const fid = student.familiaId || '__sin_familia__';
+      if (!familyMap[fid]) {
+        familyMap[fid] = {
+          familiaId: fid,
+          apellido: student.apellido,
+          responsable: student.responsable || '',
+          email: student.email || '',
+          telefono: student.telefono || '',
+          students: [],
+          unpaidMonths: new Set(),
+          totalDebt: 0,
+        };
+      }
+      const family = familyMap[fid];
+      const studentOwed = [];
+      for (const mes of dueMonths) {
+        if (gs(student.legajo, mes) === 'no') {
+          studentOwed.push(mes);
+          family.unpaidMonths.add(mes);
+          family.totalDebt += cuota;
+        }
+      }
+      if (studentOwed.length > 0) {
+        family.students.push({ ...student, cuota, owedMonths: studentOwed });
+      }
+    }
+    return Object.values(familyMap)
+      .filter(f => f.students.length > 0)
+      .map(f => ({ ...f, unpaidMonths: [...f.unpaidMonths] }))
+      .sort((a, b) => b.totalDebt - a.totalDebt);
+  }, [allStudents, gs, getCuota, dueMonths]);
+
+  const accumulatedDebtFamilies = useMemo(() => {
+    // Group students by familiaId — skip 100%-beca students (cuota = $0)
+    const familyGroups = {};
+    for (const student of allStudents) {
+      if (getCuota(student) === 0) continue;
+      const fid = student.familiaId || '__sin_familia__';
+      if (!familyGroups[fid]) {
+        familyGroups[fid] = {
+          familiaId: fid,
+          apellido: student.apellido,
+          responsable: student.responsable || '',
+          email: student.email || '',
+          telefono: student.telefono || '',
+          students: [],
+        };
+      }
+      familyGroups[fid].students.push(student);
+    }
+    const result = [];
+    for (const family of Object.values(familyGroups)) {
+      // A month is "unpaid" for the family if ANY of its students hasn't paid it
+      const unpaidMonthSet = new Set();
+      for (const student of family.students) {
+        for (const mes of dueMonths) {
+          if (gs(student.legajo, mes) === 'no') unpaidMonthSet.add(mes);
+        }
+      }
+      if (unpaidMonthSet.size < 2) continue;
+      const unpaidMonths = [...unpaidMonthSet];
+      const totalDebt = family.students.reduce((sum, st) => sum + unpaidMonths.length * getCuota(st), 0);
+      result.push({ ...family, unpaidMonthCount: unpaidMonths.length, unpaidMonths, totalDebt });
+    }
+    return result.sort((a, b) => b.unpaidMonthCount - a.unpaidMonthCount || b.totalDebt - a.totalDebt);
   }, [allStudents, gs, getCuota, dueMonths]);
 
   const filteredPayments = useMemo(() => {
     return [...payments].filter(p => {
       if (paymentSearch) {
-        const names = (p.studentIds || []).map(getStudentName).join(' ').toLowerCase();
+        const q = normalizeStr(paymentSearch);
+        const names = normalizeStr((p.studentIds || []).map(getStudentName).join(' '));
         const ref = (p.referencia || '').toLowerCase();
-        if (!names.includes(paymentSearch.toLowerCase()) && !ref.includes(paymentSearch.toLowerCase())) return false;
+        const fid = String(p.familiaId || '').toLowerCase();
+        const legs = (p.studentIds || []).map(String).join(' ');
+        if (!names.includes(q) && !ref.includes(q) && !fid.includes(q) && !legs.includes(q)) return false;
       }
       if (paymentFilter !== 'todos' && p.estado !== paymentFilter) return false;
       return true;
@@ -288,11 +364,14 @@ export default function AdminView({
 
   const filteredStudents = useMemo(() => {
     if (!studentSearch) return allStudents;
-    const q = studentSearch.toLowerCase();
+    const q = normalizeStr(studentSearch);
     return allStudents.filter(s =>
-      s.nombre.toLowerCase().includes(q) ||
-      s.apellido.toLowerCase().includes(q) ||
-      String(s.legajo).includes(q)
+      normalizeStr(s.nombre).includes(q) ||
+      normalizeStr(s.apellido).includes(q) ||
+      String(s.legajo).includes(q) ||
+      String(s.familiaId || '').toLowerCase().includes(q) ||
+      normalizeStr(s.email || '').includes(q) ||
+      normalizeStr(s.responsable || '').includes(q)
     );
   }, [allStudents, studentSearch]);
 
@@ -326,6 +405,21 @@ export default function AdminView({
       showToast('✓ Alumno actualizado');
     } catch (e) {
       showToast('Error al actualizar alumno', 'error');
+    }
+  };
+
+  const handleBulkUpdate = async (paymentsToUpdate, newStatus) => {
+    try {
+      for (const p of paymentsToUpdate) {
+        await onUpdatePayment?.(p.id, newStatus);
+      }
+      setBulkConfirm(null);
+      const label = newStatus === 'verificado'
+        ? `✓ ${paymentsToUpdate.length} pago${paymentsToUpdate.length !== 1 ? 's' : ''} verificado${paymentsToUpdate.length !== 1 ? 's' : ''}`
+        : `↩ ${paymentsToUpdate.length} pago${paymentsToUpdate.length !== 1 ? 's' : ''} revertido${paymentsToUpdate.length !== 1 ? 's' : ''} a pendiente`;
+      showToast(label);
+    } catch (e) {
+      showToast('Error en la operación', 'error');
     }
   };
 
@@ -384,6 +478,7 @@ export default function AdminView({
             getStudentName={getStudentName}
             allStudents={allStudents}
             getCuota={getCuota}
+            accumulatedDebtFamilies={accumulatedDebtFamilies}
             onOpenDebtors={() => setModal('debtors')}
             onOpenAddPayment={() => setModal('addPayment')}
             onNavigatePayments={() => setTab('pagos')}
@@ -404,20 +499,18 @@ export default function AdminView({
             onToggleExpand={(id) => setExpandedPaymentId(prev => prev === id ? null : id)}
             onUpdatePayment={handleUpdatePayment}
             onOpenAdd={() => setModal('addPayment')}
+            onBulkAction={(type, pmts) => setBulkConfirm({ type, count: pmts.length, payments: pmts })}
           />
         )}
         {tab === 'alumnos' && (
           <AlumnosTab
             students={filteredStudents}
             search={studentSearch}
-            expandedLegajo={expandedStudentLegajo}
             payments={payments}
-            rates={rates}
             gs={gs}
             getCuota={getCuota}
             getStudentName={getStudentName}
             onSearch={setStudentSearch}
-            onToggleExpand={(legajo) => setExpandedStudentLegajo(prev => prev === legajo ? null : legajo)}
             onEdit={(student) => { setEditingStudent(student); setModal('editStudent'); }}
           />
         )}
@@ -487,6 +580,19 @@ export default function AdminView({
         />
       )}
 
+      {/* Bulk confirm dialog */}
+      {bulkConfirm && (
+        <ConfirmDialog
+          type={bulkConfirm.type}
+          count={bulkConfirm.count}
+          onConfirm={() => handleBulkUpdate(
+            bulkConfirm.payments,
+            bulkConfirm.type === 'verify' ? 'verificado' : 'pendiente'
+          )}
+          onCancel={() => setBulkConfirm(null)}
+        />
+      )}
+
       {/* Toast */}
       {toast && (
         <div style={{
@@ -509,16 +615,126 @@ export default function AdminView({
   }
 }
 
+// ─── AccumulatedDebtAlert ─────────────────────────────────────────────────────
+
+function AccumulatedDebtAlert({ families, onOpenDebtors }) {
+  if (families.length === 0) {
+    return (
+      <div style={{
+        background: '#ECFDF5', border: '1px solid #A7F3D0',
+        borderRadius: 14, padding: '14px 16px',
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <span style={{ fontSize: 20, lineHeight: 1 }}>✓</span>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>Sin deuda acumulada</div>
+          <div style={{ fontSize: 11, color: '#34D399', marginTop: 2 }}>Ninguna familia debe más de 1 mes</div>
+        </div>
+      </div>
+    );
+  }
+
+  const displayed = families.slice(0, 5);
+  const remaining = families.length - displayed.length;
+  const grandTotal = families.reduce((s, f) => s + f.totalDebt, 0);
+
+  return (
+    <div style={{
+      background: '#FEF2F2', border: '2px solid #FECACA',
+      borderRadius: 14, padding: 16,
+    }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <span style={{ fontSize: 15 }}>⚠</span>
+        <span style={{ fontSize: 14, fontWeight: 700, color: T.red }}>ALERTA: Deuda Acumulada</span>
+      </div>
+      <div style={{ fontSize: 12, color: '#991B1B', marginBottom: 12 }}>
+        {families.length} familia{families.length !== 1 ? 's' : ''} deb{families.length !== 1 ? 'en' : 'e'} 2 o más meses
+      </div>
+
+      {/* Family cards */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+        {displayed.map((family, i) => (
+          <button
+            key={family.familiaId || i}
+            onClick={onOpenDebtors}
+            style={{
+              background: 'white', borderRadius: 10, border: '1px solid #FECACA',
+              padding: 12, textAlign: 'left', cursor: 'pointer',
+              fontFamily: T.font, width: '100%',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11 }}>🔴</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
+                    Familia {family.apellido}
+                  </span>
+                  {family.familiaId && (
+                    <span style={{ fontSize: 10, color: T.red, fontFamily: 'monospace', opacity: 0.7 }}>
+                      {famLabel(family.familiaId)}
+                    </span>
+                  )}
+                </div>
+                {family.responsable && (
+                  <div style={{ fontSize: 11, color: T.textLight, marginTop: 1 }}>👤 {family.responsable}</div>
+                )}
+              </div>
+              <span style={{ fontSize: 14, fontWeight: 700, color: T.red }}>{fmt(family.totalDebt)}</span>
+            </div>
+            <div style={{ fontSize: 11, color: T.red, fontWeight: 500, marginBottom: 3 }}>
+              {family.unpaidMonthCount} mes{family.unpaidMonthCount !== 1 ? 'es' : ''} sin pagar · {family.unpaidMonths.join(', ')}
+            </div>
+            {family.email && (
+              <a href={`mailto:${family.email}`} style={{ fontSize: 11, color: T.green, marginBottom: 3, display: 'block', textDecoration: 'none' }}>
+                ✉ {family.email}
+              </a>
+            )}
+            <div style={{ fontSize: 11, color: T.gray }}>
+              {family.students.map(st =>
+                `${st.nombre} · Leg. ${st.legajo}${st.beca > 0 ? ` (Beca ${Math.round(st.beca * 100)}%)` : ''}`
+              ).join(', ')}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* "y X más" link */}
+      {remaining > 0 && (
+        <button
+          onClick={onOpenDebtors}
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: 12, color: T.red, fontWeight: 600, fontFamily: T.font,
+            padding: '0 0 10px', display: 'block', textDecoration: 'underline',
+          }}
+        >
+          y {remaining} familia{remaining !== 1 ? 's' : ''} más...
+        </button>
+      )}
+
+      {/* Grand total */}
+      <div style={{
+        background: T.red, borderRadius: 8, padding: '10px 14px',
+        textAlign: 'center', fontSize: 15, fontWeight: 700, color: 'white',
+      }}>
+        Deuda acumulada total: {fmt(grandTotal)}
+      </div>
+    </div>
+  );
+}
+
 // ─── DashboardTab ─────────────────────────────────────────────────────────────
 
-function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStudents, getCuota, onOpenDebtors, onOpenAddPayment, onNavigatePayments }) {
+function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStudents, getCuota, accumulatedDebtFamilies, onOpenDebtors, onOpenAddPayment, onNavigatePayments }) {
   const [expandedId, setExpandedId] = useState(null);
   const recentPayments = [...payments].sort(byDateDesc).slice(0, 5);
 
   const kpiData = [
     { label: 'Recaudado', value: fmt(kpis.recaudado), icon: '↑', color: T.greenText, bg: T.greenBg, border: '#D1FAE5' },
     { label: 'Pendiente', value: fmt(kpis.pendiente), icon: '◷', color: T.amberText, bg: T.amberBg, border: '#FDE68A' },
-    { label: 'Con deuda', value: kpis.conDeuda, icon: '⚠', color: T.redText, bg: T.redBg, border: '#FECACA', suffix: ' alumnos' },
+    { label: 'Con deuda', value: kpis.conDeuda, icon: '⚠', color: T.redText, bg: T.redBg, border: '#FECACA', suffix: `/${kpis.totalFamilias} fam.` },
     { label: 'Deuda total', value: fmt(kpis.deudaTotal), icon: '!', color: T.purpleText, bg: T.purpleBg, border: '#DDD6FE' },
   ];
 
@@ -540,6 +756,9 @@ function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStude
           </div>
         ))}
       </div>
+
+      {/* Accumulated debt alert */}
+      <AccumulatedDebtAlert families={accumulatedDebtFamilies} onOpenDebtors={onOpenDebtors} />
 
       {/* Monthly revenue */}
       <Card style={{ padding: '16px 16px' }}>
@@ -623,7 +842,11 @@ function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStude
                     <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {names.slice(0, 2).join(', ')}{names.length > 2 ? ` +${names.length - 2}` : ''} — {p.mes}
                     </div>
-                    <div style={{ fontSize: 11, color: T.textLight }}>{p.fecha || 'Sin fecha'}</div>
+                    <div style={{ fontSize: 11, color: T.textLight }}>
+                      {p.fecha || 'Sin fecha'}
+                      {p.familiaId && ` · ${famLabel(p.familiaId)}`}
+                      {(p.studentIds || []).length > 0 && ` · Leg. ${(p.studentIds || []).join(', ')}`}
+                    </div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{fmt(p.monto)}</div>
@@ -650,7 +873,7 @@ function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStude
 
 // ─── PagosTab ─────────────────────────────────────────────────────────────────
 
-function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, getStudentName, allStudents, getCuota, onSearch, onFilter, onToggleExpand, onUpdatePayment, onOpenAdd }) {
+function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, getStudentName, allStudents, getCuota, onSearch, onFilter, onToggleExpand, onUpdatePayment, onOpenAdd, onBulkAction }) {
   const counts = {
     todos: allPayments.length,
     verificado: allPayments.filter(p => p.estado === 'verificado').length,
@@ -675,7 +898,7 @@ function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, g
           <input
             value={search}
             onChange={e => onSearch(e.target.value)}
-            placeholder="🔍  Buscar alumno o referencia..."
+            placeholder="🔍  Buscar alumno, FAM, legajo o ref..."
             style={{
               flex: 1, padding: '9px 12px', borderRadius: 8,
               border: `1.5px solid ${T.border}`, fontSize: 13,
@@ -712,6 +935,40 @@ function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, g
           ))}
         </div>
       </div>
+
+      {/* Bulk action buttons */}
+      {filter === 'pendiente' && filteredPayments.length > 0 && (
+        <div style={{ padding: '10px 14px 0' }}>
+          <button
+            onClick={() => onBulkAction('verify', filteredPayments)}
+            style={{
+              width: '100%', padding: '11px', borderRadius: 10, border: 'none',
+              background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
+              color: 'white', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', fontFamily: T.font,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            ✓ Verificar todos los pendientes ({filteredPayments.length})
+          </button>
+        </div>
+      )}
+      {filter === 'rechazado' && filteredPayments.length > 0 && (
+        <div style={{ padding: '10px 14px 0' }}>
+          <button
+            onClick={() => onBulkAction('reopen', filteredPayments)}
+            style={{
+              width: '100%', padding: '11px', borderRadius: 10, border: 'none',
+              background: T.amber,
+              color: 'white', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', fontFamily: T.font,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            }}
+          >
+            ↻ Pasar todos a pendiente ({filteredPayments.length})
+          </button>
+        </div>
+      )}
 
       {/* List */}
       <div style={{ padding: '10px 14px', flex: 1 }}>
@@ -808,7 +1065,7 @@ function PaymentExpandedDetail({ p, allStudents, getCuota, onUpdatePayment }) {
         {p.metodo && <MetaRow label="Método" value={p.metodo} />}
         {p.fecha && <MetaRow label="Fecha" value={p.fecha} />}
         {p.referencia && <MetaRow label="Referencia" value={p.referencia} mono />}
-        {p.familiaId && <MetaRow label="Familia ID" value={p.familiaId} mono />}
+        {p.familiaId && <MetaRow label="Familia" value={famLabel(p.familiaId)} mono />}
       </div>
 
       {/* Observations */}
@@ -853,6 +1110,7 @@ function PaymentExpandedDetail({ p, allStudents, getCuota, onUpdatePayment }) {
 
 function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuota, onToggle, onUpdatePayment }) {
   const names = (p.studentIds || []).map(getStudentName);
+  const legs = (p.studentIds || []).join(', ');
   return (
     <Card style={{ marginBottom: 8, overflow: 'hidden' }}>
       <button
@@ -874,7 +1132,11 @@ function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuot
           <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {names.slice(0, 2).join(', ')}{names.length > 2 ? ` +${names.length - 2}` : ''} — {p.mes}
           </div>
-          <div style={{ fontSize: 11, color: T.textLight, marginTop: 2 }}>{p.fecha || 'Sin fecha'} · {p.metodo}</div>
+          <div style={{ fontSize: 11, color: T.textLight, marginTop: 2 }}>
+            {p.fecha || 'Sin fecha'} · {p.metodo}
+            {p.familiaId && <span style={{ color: T.textLight }}> · {famLabel(p.familiaId)}</span>}
+            {legs && <span style={{ color: T.textLight }}> · Leg. {legs}</span>}
+          </div>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{fmt(p.monto)}</span>
@@ -897,14 +1159,35 @@ function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuot
 
 // ─── AlumnosTab ───────────────────────────────────────────────────────────────
 
-function AlumnosTab({ students, search, expandedLegajo, payments, rates, gs, getCuota, getStudentName, onSearch, onToggleExpand, onEdit }) {
+function AlumnosTab({ students, search, payments, gs, getCuota, getStudentName, onSearch, onEdit }) {
+  const [expandedFamiliaId, setExpandedFamiliaId] = useState(null);
+
+  const families = useMemo(() => {
+    const familyMap = {};
+    for (const student of students) {
+      const fid = student.familiaId || '__sin_familia__';
+      if (!familyMap[fid]) {
+        familyMap[fid] = {
+          familiaId: fid,
+          apellido: student.apellido,
+          responsable: student.responsable || '',
+          email: student.email || '',
+          telefono: student.telefono || '',
+          students: [],
+        };
+      }
+      familyMap[fid].students.push(student);
+    }
+    return Object.values(familyMap).sort((a, b) => a.apellido.localeCompare(b.apellido, 'es'));
+  }, [students]);
+
   return (
     <div>
       <div style={{ padding: '12px 14px', background: T.white, borderBottom: `1px solid ${T.border}`, position: 'sticky', top: 0, zIndex: 5 }}>
         <input
           value={search}
           onChange={e => onSearch(e.target.value)}
-          placeholder="🔍  Buscar alumno por nombre o legajo..."
+          placeholder="🔍  Buscar por familia, alumno o legajo..."
           style={{
             width: '100%', padding: '9px 12px', borderRadius: 8,
             border: `1.5px solid ${T.border}`, fontSize: 13,
@@ -913,20 +1196,22 @@ function AlumnosTab({ students, search, expandedLegajo, payments, rates, gs, get
         />
       </div>
       <div style={{ padding: '10px 14px' }}>
-        {students.length === 0 ? (
-          <EmptyState icon="👤" text="No se encontraron alumnos" />
+        {families.length === 0 ? (
+          <EmptyState
+            icon="👤"
+            text={search ? `No se encontraron resultados para "${search}"` : 'No se encontraron alumnos'}
+          />
         ) : (
-          students.map(student => (
-            <StudentRow
-              key={student.legajo}
-              student={student}
-              expanded={expandedLegajo === student.legajo}
+          families.map(family => (
+            <FamilyCard
+              key={family.familiaId}
+              family={family}
+              expanded={expandedFamiliaId === family.familiaId}
               payments={payments}
               gs={gs}
               getCuota={getCuota}
-              getStudentName={getStudentName}
-              onToggle={() => onToggleExpand(student.legajo)}
-              onEdit={() => onEdit(student)}
+              onToggle={() => setExpandedFamiliaId(prev => prev === family.familiaId ? null : family.familiaId)}
+              onEdit={onEdit}
             />
           ))
         )}
@@ -935,11 +1220,198 @@ function AlumnosTab({ students, search, expandedLegajo, payments, rates, gs, get
   );
 }
 
+function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit }) {
+  const dueMonths = MONTHS.slice(0, CM + 1);
+  const AVATAR_COLORS = ['#43A047', '#7B1FA2', '#1565C0', '#E65100', '#00838F', '#AD1457'];
+
+  // Compute family-level debt summary
+  let totalMonthlyFee = 0;
+  let totalDebt = 0;
+  let hasPending = false;
+  for (const student of family.students) {
+    const cuota = getCuota(student);
+    totalMonthlyFee += cuota;
+    if (cuota > 0) {
+      for (const mes of dueMonths) {
+        const s = gs(student.legajo, mes);
+        if (s === 'no') totalDebt += cuota;
+        else if (s === 'pen') hasPending = true;
+      }
+    }
+  }
+  const statusBadge = totalDebt > 0
+    ? { label: `Debe ${fmt(totalDebt)}`, bg: T.redBg, color: T.redText }
+    : hasPending
+      ? { label: 'Pendiente', bg: T.amberBg, color: T.amberText }
+      : { label: 'Al día ✓', bg: T.greenBg, color: T.greenText };
+
+  // Family payment history (any payment involving a family student)
+  const legajos = family.students.map(s => s.legajo);
+  const familyPayments = [...payments]
+    .filter(p => (p.studentIds || []).some(id => legajos.includes(id)))
+    .sort(byDateDesc);
+
+  return (
+    <Card style={{ marginBottom: 10, overflow: 'hidden' }}>
+      {/* Collapsed header */}
+      <button
+        onClick={onToggle}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
+          padding: '14px 16px', background: 'none', border: 'none',
+          cursor: 'pointer', textAlign: 'left', fontFamily: T.font,
+        }}
+      >
+        <div style={{
+          width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+          background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'white', fontWeight: 700, fontSize: 16,
+        }}>
+          {family.apellido.charAt(0).toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <span style={{ fontWeight: 700, fontSize: 14, color: T.text, flexShrink: 0 }}>Familia {family.apellido}</span>
+              {family.familiaId && (
+                <span style={{ fontSize: 10, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>
+                  {famLabel(family.familiaId)}
+                </span>
+              )}
+            </div>
+            <span style={{ padding: '2px 9px', borderRadius: 20, background: statusBadge.bg, color: statusBadge.color, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+              {statusBadge.label}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: T.textLight, marginTop: 2 }}>
+            {family.responsable && `${family.responsable} · `}
+            {family.email && <a href={`mailto:${family.email}`} style={{ color: T.green, textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{family.email}</a>}
+          </div>
+          <div style={{ fontSize: 11, color: T.textMid, marginTop: 3 }}>
+            {family.students.map(s => `${s.nombre} (Leg. ${s.legajo})`).join(', ')} · {fmt(totalMonthlyFee)}/mes
+          </div>
+        </div>
+        <span style={{ color: T.textLight, fontSize: 12, flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div style={{ borderTop: `1px solid ${T.border}`, padding: '14px 16px', animation: 'fadeIn 0.2s ease' }}>
+          {family.students.map((student, idx) => {
+            const cuota = getCuota(student);
+            const owedMonths = dueMonths.filter(mes => cuota > 0 && gs(student.legajo, mes) === 'no');
+            const hasPend = dueMonths.some(mes => gs(student.legajo, mes) === 'pen');
+            const avatarColor = AVATAR_COLORS[student.legajo % AVATAR_COLORS.length];
+            const sBadge = owedMonths.length > 0
+              ? { label: `Debe ${fmt(owedMonths.length * cuota)}`, bg: T.redBg, color: T.redText }
+              : hasPend
+                ? { label: 'Pendiente', bg: T.amberBg, color: T.amberText }
+                : { label: cuota === 0 ? 'Beca 100%' : 'Al día ✓', bg: T.greenBg, color: T.greenText };
+
+            return (
+              <div key={student.legajo} style={{
+                marginBottom: idx < family.students.length - 1 ? 16 : 0,
+                paddingBottom: idx < family.students.length - 1 ? 16 : 0,
+                borderBottom: idx < family.students.length - 1 ? `1px solid ${T.border}` : 'none',
+              }}>
+                {/* Child header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Avatar name={`${student.apellido} ${student.nombre}`} color={avatarColor} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: T.text }}>{student.nombre}</div>
+                    <div style={{ fontSize: 11, color: T.textLight }}>
+                      {student.nivel} · {student.curso} · Leg. {student.legajo}
+                      {student.beca > 0 && ` · Beca ${Math.round(student.beca * 100)}%`}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>{fmt(cuota)}/mes</div>
+                    <span style={{ padding: '2px 8px', borderRadius: 20, background: sBadge.bg, color: sBadge.color, fontSize: 10, fontWeight: 700 }}>
+                      {sBadge.label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Year grid */}
+                {cuota === 0 ? (
+                  <div style={{ background: T.greenBg, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: T.greenText, fontWeight: 600, marginBottom: 8 }}>
+                    ✓ Cuota cubierta por beca al 100%
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 8 }}>
+                    {MONTHS.map((mes, midx) => {
+                      const isDue = midx <= CM;
+                      const status = isDue ? gs(student.legajo, mes) : 'future';
+                      const cellBg = status === 'ok' ? '#DCFCE7' : status === 'pen' ? '#FEF9C3' : status === 'no' ? '#FEE2E2' : T.grayBg;
+                      const cellColor = status === 'ok' ? '#15803D' : status === 'pen' ? '#A16207' : status === 'no' ? '#B91C1C' : T.textLight;
+                      return (
+                        <div key={mes} style={{
+                          padding: '4px 7px', borderRadius: 6,
+                          background: cellBg, color: cellColor,
+                          fontSize: 10, fontWeight: 700, textAlign: 'center', minWidth: 30,
+                        }}>
+                          {MONTHS_SHORT[midx]}
+                          <div style={{ fontSize: 8, marginTop: 1 }}>
+                            {status === 'ok' ? '✓' : status === 'pen' ? '◷' : status === 'no' ? '✗' : '·'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => onEdit(student)}
+                  style={{
+                    padding: '6px 12px', borderRadius: 8,
+                    border: `1.5px solid ${T.green}`,
+                    background: 'white', color: T.green,
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
+                  }}
+                >
+                  ✏ Editar
+                </button>
+              </div>
+            );
+          })}
+
+          {/* Family payment history */}
+          {familyPayments.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: T.textMid, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
+                Historial de pagos
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {familyPayments.slice(0, 5).map((p, i) => (
+                  <div key={i} style={{ padding: '7px 10px', background: T.bg, borderRadius: 8, fontSize: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 700, color: T.text }}>{p.mes} · {p.metodo}</span>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <span style={{ fontWeight: 700, color: T.text }}>{fmt(p.monto)}</span>
+                        <StatusBadge estado={p.estado} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
+                      <span style={{ color: T.textLight }}>{p.fecha || ''}</span>
+                      {p.referencia && <span style={{ color: T.textLight, fontFamily: 'monospace' }}>{p.referencia}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName, onToggle, onEdit }) {
   const dueMonths = MONTHS.slice(0, CM + 1);
   const cuota = getCuota(student);
   const owedMonths = dueMonths.filter(mes => gs(student.legajo, mes) === 'no');
-  const hasDebt = owedMonths.length > 0;
+  const hasDebt = cuota > 0 && owedMonths.length > 0;
   const hasPending = dueMonths.some(mes => gs(student.legajo, mes) === 'pen');
 
   // Get payments for this student
@@ -993,7 +1465,8 @@ function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName,
           <div style={{ marginBottom: 12, fontSize: 12, color: T.textMid, display: 'flex', flexDirection: 'column', gap: 3 }}>
             {student.responsable && <div>👤 <strong>Responsable:</strong> {student.responsable}</div>}
             {student.email && <div>✉ <a href={`mailto:${student.email}`} style={{ color: T.green }}>{student.email}</a></div>}
-            {student.telefono && <div>📞 {student.telefono}</div>}
+            {student.telefono && <div>📞 <a href={`tel:${student.telefono}`} style={{ color: T.textMid, textDecoration: 'none' }}>{student.telefono}</a></div>}
+            {student.familiaId && <div style={{ color: T.textLight }}>🏠 {famLabel(student.familiaId)}</div>}
           </div>
 
           {/* Year grid */}
@@ -1176,36 +1649,78 @@ function RateInput({ nivel, defaultValue, onSave }) {
 function DebtorsModal({ debtors, onClose }) {
   return (
     <Overlay onClose={onClose}>
-      <ModalHeader title={`Deudores (${debtors.length})`} onClose={onClose} />
+      <ModalHeader
+        title={`Deudores — ${debtors.length} familia${debtors.length !== 1 ? 's' : ''}`}
+        onClose={onClose}
+      />
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
         {debtors.length === 0 ? (
-          <EmptyState icon="🎉" text="¡Sin deudores! Todos los alumnos están al día." />
+          <EmptyState icon="🎉" text="¡Sin deudores! Todas las familias están al día." />
         ) : (
-          debtors.map((d, i) => (
-            <Card key={d.legajo} style={{ marginBottom: 10, padding: '12px 14px' }}>
+          debtors.map((family, i) => (
+            <Card key={family.familiaId || i} style={{ marginBottom: 10, padding: '14px' }}>
+              {/* Family header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{d.apellido}, {d.nombre}</div>
-                  <div style={{ fontSize: 12, color: T.textLight }}>{d.nivel} · {d.curso} · Legajo {d.legajo}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>
+                      Familia {family.apellido}
+                    </span>
+                    {family.familiaId && (
+                      <span style={{ fontSize: 11, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 6px', borderRadius: 4 }}>
+                        {famLabel(family.familiaId)}
+                      </span>
+                    )}
+                  </div>
+                  {family.responsable && (
+                    <div style={{ fontSize: 12, color: T.textMid, marginTop: 2 }}>👤 {family.responsable}</div>
+                  )}
+                  <div style={{ fontSize: 11, color: T.textLight, marginTop: 1 }}>
+                    {family.students.length} alumno{family.students.length !== 1 ? 's' : ''}
+                  </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 800, fontSize: 15, color: T.redText }}>{fmt(d.total)}</div>
-                  <div style={{ fontSize: 11, color: T.textLight }}>{d.owedMonths.length} cuota{d.owedMonths.length > 1 ? 's' : ''}</div>
+                <div style={{ fontWeight: 800, fontSize: 15, color: T.redText }}>{fmt(family.totalDebt)}</div>
+              </div>
+
+              {/* Contact */}
+              <div style={{ fontSize: 11, color: T.textMid, display: 'flex', gap: 14, marginBottom: 8, flexWrap: 'wrap' }}>
+                {family.email && (
+                  <a href={`mailto:${family.email}`} style={{ color: T.green, textDecoration: 'none' }}>✉ {family.email}</a>
+                )}
+                {family.telefono && (
+                  <a href={`tel:${family.telefono}`} style={{ color: T.textMid, textDecoration: 'none' }}>📞 {family.telefono}</a>
+                )}
+              </div>
+
+              {/* Months owed */}
+              <div style={{ marginBottom: 8 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: T.textMid }}>Meses adeudados: </span>
+                <div style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+                  {family.unpaidMonths.map(mes => (
+                    <span key={mes} style={{
+                      padding: '2px 8px', borderRadius: 20,
+                      background: T.redBg, color: T.redText, fontSize: 11, fontWeight: 600,
+                    }}>
+                      {mes}
+                    </span>
+                  ))}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
-                {d.owedMonths.map(mes => (
-                  <span key={mes} style={{
-                    padding: '2px 8px', borderRadius: 20,
-                    background: T.redBg, color: T.redText, fontSize: 11, fontWeight: 600,
+
+              {/* Children */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {family.students.map(st => (
+                  <div key={st.legajo} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '6px 10px', background: T.bg, borderRadius: 7, fontSize: 12,
                   }}>
-                    {mes}
-                  </span>
+                    <span style={{ color: T.textMid }}>
+                      • {st.nombre} — {st.nivel} {st.curso} · Leg. {st.legajo}
+                      {st.beca > 0 && ` (Beca ${Math.round(st.beca * 100)}%)`}
+                    </span>
+                    <span style={{ fontWeight: 700, color: T.text }}>{fmt(st.cuota)}</span>
+                  </div>
                 ))}
-              </div>
-              <div style={{ fontSize: 11, color: T.textMid, display: 'flex', gap: 12 }}>
-                {d.email && <span>✉ {d.email}</span>}
-                {d.telefono && <span>📞 {d.telefono}</span>}
               </div>
             </Card>
           ))
@@ -1461,6 +1976,51 @@ function ModalHeader({ title, onClose }) {
       >
         ✕
       </button>
+    </div>
+  );
+}
+
+function ConfirmDialog({ type, count, onConfirm, onCancel }) {
+  const isVerify = type === 'verify';
+  return (
+    <div style={{
+      position: 'absolute', inset: 0, zIndex: 300,
+      background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '0 24px',
+    }}>
+      <div style={{
+        background: T.white, borderRadius: 20, padding: '28px 24px',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
+        animation: 'fadeIn 0.2s ease', maxWidth: 380, width: '100%',
+      }}>
+        <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 14 }}>
+          {isVerify ? '✅' : '↩'}
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 17, color: T.text, textAlign: 'center', marginBottom: 8 }}>
+          {isVerify ? `¿Verificar ${count} pago${count !== 1 ? 's' : ''}?` : `¿Revertir ${count} pago${count !== 1 ? 's' : ''} a pendiente?`}
+        </div>
+        <div style={{ fontSize: 13, color: T.textMid, textAlign: 'center', marginBottom: 24, lineHeight: 1.6 }}>
+          {isVerify
+            ? `Se marcarán como "Verificado" los ${count} pago${count !== 1 ? 's' : ''} pendientes actualmente visibles.`
+            : `Se moverán a "Pendiente" los ${count} pago${count !== 1 ? 's' : ''} rechazados actualmente visibles.`
+          }
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <GhostBtn onClick={onCancel} style={{ flex: 1 }}>Cancelar</GhostBtn>
+          <button
+            onClick={onConfirm}
+            style={{
+              flex: 2, padding: '10px 18px', borderRadius: 10, border: 'none',
+              background: isVerify ? T.greenMid : T.amber,
+              color: 'white', fontSize: 14, fontWeight: 700,
+              cursor: 'pointer', fontFamily: T.font,
+            }}
+          >
+            {isVerify ? '✓ Verificar todos' : '↩ Revertir todos'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

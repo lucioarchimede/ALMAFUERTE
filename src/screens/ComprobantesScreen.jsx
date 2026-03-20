@@ -128,7 +128,7 @@ function ReceiptCard({ payment, family, onDownload }) {
   const cfg = statusConfig[payment.estado] || statusConfig.pendiente;
   const childNames = (payment.studentIds || []).map(id => {
     const child = family?.children.find(c => c.id === Number(id));
-    return child?.shortName || String(id);
+    return child ? `${child.shortName} (Leg. ${child.legajo})` : `Leg. ${id}`;
   });
   const concept = payment.mes ? `Cuota ${payment.mes}` : 'Pago';
 

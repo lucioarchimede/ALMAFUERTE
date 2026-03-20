@@ -287,7 +287,8 @@ function SummaryCard({ label, value, unit, icon, valueColor }) {
 }
 
 function ChildCard({ child, payments, expanded, onToggle, onPayMonth }) {
-  const overallStatus = getChildOverallStatus(child.id, payments);
+  // 100% beca children owe nothing — always show "Al día"
+  const overallStatus = child.cuota === 0 ? 'ok' : getChildOverallStatus(child.id, payments);
 
   const statusDotColor = {
     ok: '#43A047',
@@ -384,22 +385,32 @@ function ChildCard({ child, payments, expanded, onToggle, onPayMonth }) {
           animation: 'fadeIn 0.2s ease',
           borderTop: '1px solid #F5F5F5',
         }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 8,
-            marginTop: 12,
-          }}>
-            {MONTHS.map(m => (
-              <MonthCell
-                key={m.num}
-                month={m}
-                childId={child.id}
-                payments={payments}
-                onPay={() => onPayMonth(m.num)}
-              />
-            ))}
-          </div>
+          {child.cuota === 0 ? (
+            <div style={{
+              marginTop: 12, background: '#ECFDF5', borderRadius: 10,
+              padding: '12px 14px', fontSize: 13, fontWeight: 600,
+              color: '#059669', textAlign: 'center',
+            }}>
+              ✓ Cuota cubierta por beca al 100%
+            </div>
+          ) : (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: 8,
+              marginTop: 12,
+            }}>
+              {MONTHS.map(m => (
+                <MonthCell
+                  key={m.num}
+                  month={m}
+                  childId={child.id}
+                  payments={payments}
+                  onPay={() => onPayMonth(m.num)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

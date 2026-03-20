@@ -638,7 +638,7 @@ function StepReview({ paymentItems, totalAmount, concept, onMercadoPago, onTrans
                 {item.child.shortName}
               </p>
               <p style={{ fontSize: 12, color: '#9E9E9E', margin: '2px 0 0', fontWeight: 500 }}>
-                Cuota {getMonthName(item.month)} {CURRENT_YEAR}
+                Leg. {item.child.legajo} · Cuota {getMonthName(item.month)} {CURRENT_YEAR}
               </p>
             </div>
             <span style={{ fontWeight: 800, fontSize: 15, color: '#212121' }}>
