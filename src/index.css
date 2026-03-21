@@ -36,6 +36,7 @@
 html {
   height: 100%;
   overflow: hidden;
+  background: #FFFFFF;
 }
 
 body {
@@ -48,19 +49,24 @@ body {
   -webkit-text-size-adjust: 100%;
   overflow: hidden;
   overscroll-behavior: none;
+  margin: 0;
+  padding: 0;
 }
 
 #root {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 480px;
-  height: 100%;
+  height: 100vh;
   height: 100dvh;
   margin: 0 auto;
   position: relative;
   background: var(--white);
   overflow: hidden;
+}
+
+@media (min-width: 481px) {
+  #root { max-width: 480px; }
 }
 
 button {

@@ -427,7 +427,6 @@ export default function AdminView({
   // ── Render ──
 
   const shell = {
-    maxWidth: 480,
     margin: '0 auto',
     width: '100%',
     height: '100dvh',
@@ -539,7 +538,7 @@ export default function AdminView({
         display: 'flex',
         alignItems: 'stretch',
         boxShadow: '0 -1px 4px rgba(0,0,0,0.04)',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingBottom: 'max(6px, env(safe-area-inset-bottom, 6px))',
       }}>
         {[
           { id: 'dashboard', label: 'Dashboard', Icon: IconBarChart },

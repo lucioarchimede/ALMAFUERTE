@@ -28,7 +28,7 @@ export function BottomNav({ currentScreen, dispatch }) {
       display: 'flex',
       alignItems: 'stretch',
       boxShadow: '0 -1px 4px rgba(0,0,0,0.04)',
-      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      paddingBottom: 'max(6px, env(safe-area-inset-bottom, 6px))',
     }}>
       {NAV_ITEMS.map(({ id, label, Icon }) => {
         const isActive = id !== 'pay' && currentScreen === id;
