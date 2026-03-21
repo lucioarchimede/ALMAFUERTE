@@ -531,16 +531,14 @@ export default function AdminView({
       <div style={{
         position: 'fixed',
         bottom: 0,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: '100%',
-        maxWidth: 480,
+        left: 0,
+        right: 0,
         zIndex: 40,
         background: T.white,
         borderTop: `1px solid ${T.border}`,
         display: 'flex',
         alignItems: 'stretch',
-        boxShadow: '0 -2px 12px rgba(0,0,0,0.06)',
+        boxShadow: '0 -1px 4px rgba(0,0,0,0.04)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}>
         {[
@@ -557,8 +555,8 @@ export default function AdminView({
               style={{
                 flex: 1, background: 'none', border: 'none', cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                gap: 4, color: active ? T.green : T.textLight, fontFamily: T.font,
-                minHeight: 56, position: 'relative',
+                gap: 3, color: active ? T.green : T.textLight, fontFamily: T.font,
+                minHeight: 48, padding: '8px 0 6px', position: 'relative',
               }}
             >
               {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 24, height: 2, background: T.green, borderRadius: '0 0 3px 3px' }} />}
