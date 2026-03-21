@@ -473,7 +473,7 @@ export default function AdminView({
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 80 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' }}>
         {tab === 'dashboard' && (
           <DashboardTab
             kpis={kpis}
@@ -530,20 +530,13 @@ export default function AdminView({
       </div>
 
       {/* Bottom nav */}
-      <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        zIndex: 40,
+      <nav style={{
+        flexShrink: 0,
+        background: T.white,
+        borderTop: `1px solid ${T.border}`,
+        display: 'flex',
+        alignItems: 'stretch',
       }}>
-        <div style={{
-          background: T.white,
-          borderTop: `1px solid ${T.border}`,
-          display: 'flex',
-          alignItems: 'stretch',
-          boxShadow: '0 -1px 4px rgba(0,0,0,0.04)',
-        }}>
         {[
           { id: 'dashboard', label: 'Dashboard', Icon: IconBarChart },
           { id: 'pagos', label: 'Pagos', Icon: IconCreditCard },
@@ -559,7 +552,9 @@ export default function AdminView({
                 flex: 1, background: 'none', border: 'none', cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: 3, color: active ? T.green : T.textLight, fontFamily: T.font,
-                minHeight: 50, padding: '8px 0 4px', position: 'relative',
+                padding: '10px 0 10px',
+                paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
+                minHeight: 52, position: 'relative',
               }}
             >
               {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 24, height: 2, background: T.green, borderRadius: '0 0 3px 3px' }} />}
@@ -568,9 +563,7 @@ export default function AdminView({
             </button>
           );
         })}
-        </div>
-        <div style={{ background: T.white, height: 'env(safe-area-inset-bottom, 0px)' }} />
-      </div>
+      </nav>
 
       {/* Modals */}
       {modal === 'debtors' && (
