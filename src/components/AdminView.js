@@ -429,7 +429,7 @@ export default function AdminView({
   const shell = {
     margin: '0 auto',
     width: '100%',
-    height: '100dvh',
+    height: '100%',
     display: 'flex',
     flexDirection: 'column',
     background: T.bg,
@@ -443,7 +443,7 @@ export default function AdminView({
       {/* Header */}
       <div style={{
         background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
-        paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
+        paddingTop: 16,
         paddingLeft: 16,
         paddingRight: 16,
         paddingBottom: 16,
@@ -553,7 +553,6 @@ export default function AdminView({
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: 3, color: active ? T.green : T.textLight, fontFamily: T.font,
                 padding: '10px 0 10px',
-                paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
                 minHeight: 52, position: 'relative',
               }}
             >

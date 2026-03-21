@@ -40,7 +40,6 @@ export function BottomNav({ currentScreen, dispatch }) {
               justifyContent: 'center',
               gap: 3,
               padding: '10px 0 10px',
-              paddingBottom: 'calc(10px + env(safe-area-inset-bottom, 0px))',
               minHeight: 52,
               color: isActive ? '#1B5E20' : '#9CA3AF',
               cursor: 'pointer',
