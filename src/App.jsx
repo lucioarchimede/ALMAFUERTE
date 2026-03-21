@@ -257,8 +257,8 @@ export default function App() {
   const CurrentScreen = SCREENS[state.currentScreen] || HomeScreen;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div className="scroll-y" style={{ flex: 1, overflowX: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', height: '100vh', overflow: 'hidden', position: 'relative' }}>
+      <div className="scroll-y" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 'calc(64px + env(safe-area-inset-bottom, 0px))' }}>
         <CurrentScreen
           state={state}
           dispatch={dispatch}

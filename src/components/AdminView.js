@@ -429,7 +429,8 @@ export default function AdminView({
   const shell = {
     maxWidth: 480,
     margin: '0 auto',
-    height: '100%',
+    width: '100%',
+    height: '100dvh',
     display: 'flex',
     flexDirection: 'column',
     background: T.bg,
@@ -470,7 +471,7 @@ export default function AdminView({
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 80 }}>
         {tab === 'dashboard' && (
           <DashboardTab
             kpis={kpis}
@@ -528,9 +529,19 @@ export default function AdminView({
 
       {/* Bottom nav */}
       <div style={{
-        height: 66, background: T.white, borderTop: `1px solid ${T.border}`,
-        display: 'flex', alignItems: 'stretch', flexShrink: 0,
+        position: 'fixed',
+        bottom: 0,
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: 480,
+        zIndex: 40,
+        background: T.white,
+        borderTop: `1px solid ${T.border}`,
+        display: 'flex',
+        alignItems: 'stretch',
         boxShadow: '0 -2px 12px rgba(0,0,0,0.06)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}>
         {[
           { id: 'dashboard', label: 'Dashboard', Icon: IconBarChart },
@@ -547,7 +558,7 @@ export default function AdminView({
                 flex: 1, background: 'none', border: 'none', cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: 4, color: active ? T.green : T.textLight, fontFamily: T.font,
-                position: 'relative',
+                minHeight: 56, position: 'relative',
               }}
             >
               {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 24, height: 2, background: T.green, borderRadius: '0 0 3px 3px' }} />}

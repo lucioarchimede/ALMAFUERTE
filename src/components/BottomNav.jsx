@@ -18,13 +18,19 @@ export function BottomNav({ currentScreen, dispatch }) {
 
   return (
     <nav style={{
+      position: 'fixed',
+      bottom: 0,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      width: '100%',
+      maxWidth: 480,
+      zIndex: 40,
       background: 'white',
       borderTop: '1px solid #E2E8F0',
       display: 'flex',
       alignItems: 'stretch',
-      boxShadow: '0 -1px 0 #E2E8F0',
-      flexShrink: 0,
-      paddingBottom: 'env(safe-area-inset-bottom)',
+      boxShadow: '0 -2px 8px rgba(0,0,0,0.06)',
+      paddingBottom: 'env(safe-area-inset-bottom, 0px)',
     }}>
       {NAV_ITEMS.map(({ id, label, Icon }) => {
         const isActive = id !== 'pay' && currentScreen === id;
