@@ -116,7 +116,6 @@ export default function HomeScreen({ state, dispatch, addToast, notifications = 
         background: 'linear-gradient(135deg, #1B5E20, #2E7D32)',
         padding: 'max(20px, env(safe-area-inset-top)) 20px 36px',
         position: 'relative',
-        overflow: 'hidden',
       }}>
         <div style={{ position: 'relative' }}>
           {/* Top row */}

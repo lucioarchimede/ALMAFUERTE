@@ -1943,7 +1943,7 @@ function EditStudentModal({ student, rates, getCuota, onSubmit, onClose }) {
 function Overlay({ children, onClose }) {
   return (
     <div style={{
-      position: 'absolute', inset: 0, zIndex: 200,
+      position: 'fixed', inset: 0, zIndex: 200,
       background: 'rgba(0,0,0,0.45)',
       backdropFilter: 'blur(4px)',
       display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
@@ -2001,7 +2001,7 @@ function ConfirmDialog({ type, count, onConfirm, onCancel }) {
   const isVerify = type === 'verify';
   return (
     <div style={{
-      position: 'absolute', inset: 0, zIndex: 300,
+      position: 'fixed', inset: 0, zIndex: 300,
       background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '0 24px',

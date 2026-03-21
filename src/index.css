@@ -22,7 +22,7 @@
   --red: #E53935;
   --red-bg: #FFEBEE;
   --mp-blue: #009EE3;
-  --font: 'Nunito', system-ui, sans-serif;
+  --font: 'IBM Plex Sans', -apple-system, system-ui, sans-serif;
   --nav-height: 68px;
   --radius: 16px;
   --radius-sm: 10px;
@@ -46,7 +46,9 @@ body {
   color: var(--charcoal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 #root {
@@ -54,6 +56,7 @@ body {
   flex-direction: column;
   max-width: 430px;
   height: 100%;
+  height: 100dvh;
   margin: 0 auto;
   position: relative;
   background: var(--white);
@@ -68,6 +71,7 @@ button {
   font-family: var(--font);
   transition: transform 0.12s ease, opacity 0.15s ease, background 0.2s ease;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 button:active:not(:disabled) {
