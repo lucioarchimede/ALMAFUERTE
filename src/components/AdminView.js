@@ -55,7 +55,7 @@ const fmt = (n) => '$' + Number(n || 0).toLocaleString('es-AR', { minimumFractio
 
 const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-const famLabel = (id) => id ? `FAM-${id}` : '';
+const famLabel = (id) => id ? (id.startsWith('FAM-') ? id : `FAM-${id}`) : '';
 
 // Deterministic accent color per family (for left border visual differentiation)
 const FAMILY_BORDER_COLORS = ['#2E7D32','#1565C0','#E65100','#6A1B9A','#00838F','#AD1457','#F57F17','#4527A0'];
@@ -667,7 +667,7 @@ function AccumulatedDebtAlert({ families, onOpenDebtors }) {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
               <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 6px' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.red, display: 'inline-block', flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
                     Familia {family.apellido}
@@ -1220,7 +1220,7 @@ function AlumnosTab({ students, search, payments, gs, getCuota, getStudentName, 
               family={family}
               expanded={expandedFamiliaId === family.familiaId}
               payments={payments}
-              gs={gs}
+              gs={gs} 
               getCuota={getCuota}
               onToggle={() => setExpandedFamiliaId(prev => prev === family.familiaId ? null : family.familiaId)}
               onEdit={onEdit}
@@ -1284,16 +1284,14 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
           {family.apellido.charAt(0).toUpperCase()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
-              <span style={{ fontWeight: 700, fontSize: 14, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Familia {family.apellido}</span>
-              {family.familiaId && (
-                <span style={{ fontSize: 10, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 5px', borderRadius: 4, flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {famLabel(family.familiaId)}
-                </span>
-              )}
-            </div>
-            <span style={{ padding: '2px 9px', borderRadius: 20, background: statusBadge.bg, color: statusBadge.color, fontSize: 11, fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 8px' }}>
+            <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>Familia {family.apellido}</span>
+            {family.familiaId && (
+              <span style={{ fontSize: 10, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 5px', borderRadius: 4 }}>
+                {famLabel(family.familiaId)}
+              </span>
+            )}
+            <span style={{ padding: '2px 9px', borderRadius: 20, background: statusBadge.bg, color: statusBadge.color, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', marginLeft: 'auto' }}>
               {statusBadge.label}
             </span>
           </div>
@@ -1696,12 +1694,12 @@ function DebtorsModal({ debtors, onClose }) {
               {/* Family header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 6px' }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>
                       Familia {family.apellido}
                     </span>
                     {family.familiaId && (
-                      <span style={{ fontSize: 11, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 6px', borderRadius: 4, flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 11, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 6px', borderRadius: 4 }}>
                         {famLabel(family.familiaId)}
                       </span>
                     )}
