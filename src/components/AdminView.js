@@ -1145,7 +1145,7 @@ function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuot
           <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {namesWithLegs.slice(0, 2).join(', ')}{namesWithLegs.length > 2 ? ` +${namesWithLegs.length - 2}` : ''} — {p.mes}
           </div>
-          <div style={{ fontSize: 11, color: T.textLight, marginTop: 2 }}>
+          <div style={{ fontSize: 11, color: T.textLight, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {p.fecha || 'Sin fecha'} · {p.metodo}
             {p.familiaId && <span style={{ color: T.textLight }}> · {famLabel(p.familiaId)}</span>}
           </div>
@@ -1284,25 +1284,44 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
           {family.apellido.charAt(0).toUpperCase()}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-              <span style={{ fontWeight: 700, fontSize: 14, color: T.text, flexShrink: 0 }}>Familia {family.apellido}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+              <span style={{ fontWeight: 700, fontSize: 14, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Familia {family.apellido}</span>
               {family.familiaId && (
-                <span style={{ fontSize: 10, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>
+                <span style={{ fontSize: 10, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 5px', borderRadius: 4, flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {famLabel(family.familiaId)}
                 </span>
               )}
             </div>
-            <span style={{ padding: '2px 9px', borderRadius: 20, background: statusBadge.bg, color: statusBadge.color, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+            <span style={{ padding: '2px 9px', borderRadius: 20, background: statusBadge.bg, color: statusBadge.color, fontSize: 11, fontWeight: 700, flexShrink: 0, whiteSpace: 'nowrap' }}>
               {statusBadge.label}
             </span>
           </div>
-          <div style={{ fontSize: 11, color: T.textLight, marginTop: 2 }}>
-            {family.responsable && `${family.responsable} · `}
-            {family.email && <a href={`mailto:${family.email}`} style={{ color: T.green, textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{family.email}</a>}
-          </div>
+          {family.responsable && (
+            <div style={{ fontSize: 11, color: T.textMid, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {family.responsable}
+            </div>
+          )}
+          {family.email && (
+            <div style={{ fontSize: 11, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <a href={`mailto:${family.email}`} style={{ color: T.green, textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{family.email}</a>
+            </div>
+          )}
           <div style={{ fontSize: 11, color: T.textMid, marginTop: 3 }}>
-            {family.students.map(s => `${s.nombre} (Leg. ${s.legajo})`).join(', ')} · {fmt(totalMonthlyFee)}/mes
+            {family.students.length <= 2 ? (
+              <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {family.students.map(s => `${s.nombre} (Leg. ${s.legajo})`).join(', ')} · {fmt(totalMonthlyFee)}/mes
+              </div>
+            ) : (
+              <div>
+                {family.students.map(s => (
+                  <div key={s.legajo} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {s.nombre} (Leg. {s.legajo}) · {s.nivel} {s.curso}
+                  </div>
+                ))}
+                <div style={{ marginTop: 1 }}>{fmt(totalMonthlyFee)}/mes</div>
+              </div>
+            )}
           </div>
         </div>
         <span style={{ color: T.textLight, fontSize: 12, flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
@@ -1398,16 +1417,16 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 {familyPayments.slice(0, 5).map((p, i) => (
                   <div key={i} style={{ padding: '7px 10px', background: T.bg, borderRadius: 8, fontSize: 12 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontWeight: 700, color: T.text }}>{p.mes} · {p.metodo}</span>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 700, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.mes} · {p.metodo}</span>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                         <span style={{ fontWeight: 700, color: T.text }}>{fmt(p.monto)}</span>
                         <StatusBadge estado={p.estado} />
                       </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}>
-                      <span style={{ color: T.textLight }}>{p.fecha || ''}</span>
-                      {p.referencia && <span style={{ color: T.textLight, fontFamily: 'monospace' }}>{p.referencia}</span>}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, gap: 8 }}>
+                      <span style={{ color: T.textLight, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.fecha || ''}</span>
+                      {p.referencia && <span style={{ color: T.textLight, fontFamily: 'monospace', flexShrink: 0 }}>{p.referencia}</span>}
                     </div>
                   </div>
                 ))}
@@ -1675,35 +1694,39 @@ function DebtorsModal({ debtors, onClose }) {
           debtors.map((family, i) => (
             <Card key={family.familiaId || i} style={{ marginBottom: 10, padding: '14px' }}>
               {/* Family header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                    <span style={{ fontWeight: 700, fontSize: 14, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       Familia {family.apellido}
                     </span>
                     {family.familiaId && (
-                      <span style={{ fontSize: 11, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 6px', borderRadius: 4 }}>
+                      <span style={{ fontSize: 11, color: T.textLight, fontFamily: 'monospace', background: T.grayBg, padding: '1px 6px', borderRadius: 4, flexShrink: 0, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {famLabel(family.familiaId)}
                       </span>
                     )}
                   </div>
                   {family.responsable && (
-                    <div style={{ fontSize: 12, color: T.textMid, marginTop: 2 }}>{family.responsable}</div>
+                    <div style={{ fontSize: 12, color: T.textMid, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{family.responsable}</div>
                   )}
                   <div style={{ fontSize: 11, color: T.textLight, marginTop: 1 }}>
                     {family.students.length} alumno{family.students.length !== 1 ? 's' : ''}
                   </div>
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: T.redText }}>{fmt(family.totalDebt)}</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: T.redText, flexShrink: 0 }}>{fmt(family.totalDebt)}</div>
               </div>
 
               {/* Contact */}
-              <div style={{ fontSize: 11, color: T.textMid, display: 'flex', gap: 14, marginBottom: 8, flexWrap: 'wrap' }}>
+              <div style={{ fontSize: 11, color: T.textMid, marginBottom: 8 }}>
                 {family.email && (
-                  <a href={`mailto:${family.email}`} style={{ color: T.green, textDecoration: 'none' }}>{family.email}</a>
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <a href={`mailto:${family.email}`} style={{ color: T.green, textDecoration: 'none' }}>{family.email}</a>
+                  </div>
                 )}
                 {family.telefono && (
-                  <a href={`tel:${family.telefono}`} style={{ color: T.textMid, textDecoration: 'none' }}>{family.telefono}</a>
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: family.email ? 2 : 0 }}>
+                    <a href={`tel:${family.telefono}`} style={{ color: T.textMid, textDecoration: 'none' }}>{family.telefono}</a>
+                  </div>
                 )}
               </div>
 
@@ -1726,14 +1749,14 @@ function DebtorsModal({ debtors, onClose }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {family.students.map(st => (
                   <div key={st.legajo} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
                     padding: '6px 10px', background: T.bg, borderRadius: 7, fontSize: 12,
                   }}>
-                    <span style={{ color: T.textMid }}>
+                    <span style={{ color: T.textMid, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                       • {st.nombre} — {st.nivel} {st.curso} · Leg. {st.legajo}
                       {st.beca > 0 && ` (Beca ${Math.round(st.beca * 100)}%)`}
                     </span>
-                    <span style={{ fontWeight: 700, color: T.text }}>{fmt(st.cuota)}</span>
+                    <span style={{ fontWeight: 700, color: T.text, flexShrink: 0 }}>{fmt(st.cuota)}</span>
                   </div>
                 ))}
               </div>
