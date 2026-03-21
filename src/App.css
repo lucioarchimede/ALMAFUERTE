@@ -1,1 +1,43 @@
-/* App-level styles — intentionally minimal */
+/* ═══ Global Mobile Styles ═══ */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #F8FAFC;
+  -webkit-text-size-adjust: 100%;
+  font-family: 'IBM Plex Sans', -apple-system, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+body {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+button, a, nav, [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input, select, textarea {
+  font-size: 16px !important;
+}
+
+/* Safe area padding for iPhones with notch */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+}

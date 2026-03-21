@@ -11,7 +11,7 @@
   --green-bg: #E8F5E9;
   --gold: #F9A825;
   --gold-light: #FFD54F;
-  --bg: #F5F5F0;
+  --bg: #F8FAFC;
   --white: #FFFFFF;
   --charcoal: #212121;
   --gray-light: #EEEEEE;
@@ -23,26 +23,25 @@
   --red-bg: #FFEBEE;
   --mp-blue: #009EE3;
   --font: 'IBM Plex Sans', -apple-system, system-ui, sans-serif;
-  --nav-height: 68px;
-  --radius: 16px;
+  --nav-height: 64px;
+  --radius: 14px;
   --radius-sm: 10px;
-  --shadow: 0 2px 12px rgba(0,0,0,0.08);
-  --shadow-md: 0 4px 20px rgba(0,0,0,0.12);
-  --shadow-lg: 0 8px 32px rgba(0,0,0,0.16);
-}
-
-html, body, #root {
-  height: 100%;
-  width: 100%;
+  --shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
+  --shadow-md: 0 4px 20px rgba(0,0,0,0.08);
+  --shadow-lg: 0 10px 40px rgba(0,0,0,0.12);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 html {
+  height: 100%;
   overflow: hidden;
 }
 
 body {
+  height: 100%;
   font-family: var(--font);
-  background: #2E7D32;
+  background: var(--bg);
   color: var(--charcoal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -54,13 +53,13 @@ body {
 #root {
   display: flex;
   flex-direction: column;
-  max-width: 430px;
+  width: 100%;
+  max-width: 480px;
   height: 100%;
   height: 100dvh;
   margin: 0 auto;
   position: relative;
   background: var(--white);
-  box-shadow: 0 0 60px rgba(0,0,0,0.3);
   overflow: hidden;
 }
 
@@ -69,13 +68,13 @@ button {
   border: none;
   outline: none;
   font-family: var(--font);
-  transition: transform 0.12s ease, opacity 0.15s ease, background 0.2s ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 
 button:active:not(:disabled) {
   transform: scale(0.97);
+  transition: transform 0.1s ease;
 }
 
 button:disabled {
@@ -86,86 +85,29 @@ button:disabled {
 input, select, textarea {
   font-family: var(--font);
   outline: none;
+  font-size: 16px !important;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
+a { color: inherit; text-decoration: none; }
 
-::-webkit-scrollbar { width: 3px; height: 3px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
+::-webkit-scrollbar { width: 0; height: 0; }
 
-/* Animations */
-@keyframes slideInDown {
-  from { transform: translateY(-20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
+/* ═══ Animations ═══ */
+@keyframes slideInDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes slideInUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scaleIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes checkDraw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes slideNotif { from { transform: translateY(-12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-@keyframes slideInUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes scaleIn {
-  from { transform: scale(0); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
-}
-
-@keyframes checkDraw {
-  from { stroke-dashoffset: 100; }
-  to { stroke-dashoffset: 0; }
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-@keyframes expandDown {
-  from { max-height: 0; opacity: 0; }
-  to { max-height: 1000px; opacity: 1; }
-}
-
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
-}
-
-@keyframes shimmer {
-  0% { background-position: -468px 0; }
-  100% { background-position: 468px 0; }
-}
-
-.skeleton {
-  background: linear-gradient(to right, #f0f0f0 8%, #e0e0e0 18%, #f0f0f0 33%);
-  background-size: 800px 100%;
-  animation: shimmer 1.5s infinite linear;
-  border-radius: 8px;
-}
-
-.animate-slide-up {
-  animation: slideInUp 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.animate-fade {
-  animation: fadeIn 0.25s ease;
-}
+.animate-slide-up { animation: slideInUp 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+.animate-fade { animation: fadeIn 0.25s ease; }
 
 .spinner {
-  width: 40px;
-  height: 40px;
+  width: 40px; height: 40px;
   border: 4px solid rgba(255,255,255,0.3);
   border-top-color: white;
   border-radius: 50%;
@@ -173,54 +115,28 @@ a {
 }
 
 .spinner-green {
-  width: 32px;
-  height: 32px;
+  width: 32px; height: 32px;
   border: 3px solid rgba(46,125,50,0.2);
   border-top-color: #2E7D32;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 
-/* Hover effects via CSS */
-.btn-ghost:hover {
-  background: rgba(0,0,0,0.05) !important;
-}
-
-.nav-btn:hover {
-  background: rgba(46,125,50,0.08) !important;
-}
-
-.card-hover:hover {
-  box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important;
-  transform: translateY(-1px);
-  transition: all 0.2s ease !important;
-}
-
-.copy-btn:hover {
-  background: rgba(46,125,50,0.1) !important;
-}
-
-/* ─── Safe areas (iPhone notch + home indicator) ─── */
-:root {
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-}
-
-/* ─── Smooth scrolling on iOS ─────────────────────── */
+/* ═══ Smooth scrolling ═══ */
 .scroll-y {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
 
-/* ─── Prevent iOS input zoom (font < 16px triggers it) */
-@media (max-width: 768px) {
-  input, select, textarea {
-    font-size: 16px !important;
-  }
+/* ═══ Text overflow protection ═══ */
+.text-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* ─── Minimum touch target helper ─────────────────── */
+/* ═══ Touch targets ═══ */
 .touch-target {
   min-width: 44px;
   min-height: 44px;
@@ -228,10 +144,3 @@ a {
   align-items: center;
   justify-content: center;
 }
-
-/* ─── Notification panel slide-down ───────────────── */
-@keyframes slideNotif {
-  from { transform: translateY(-12px); opacity: 0; }
-  to   { transform: translateY(0);     opacity: 1; }
-}
-
