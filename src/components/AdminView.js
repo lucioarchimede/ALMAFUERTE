@@ -443,7 +443,10 @@ export default function AdminView({
       {/* Header */}
       <div style={{
         background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
-        padding: 'max(18px, env(safe-area-inset-top)) 16px 16px',
+        paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
+        paddingLeft: 16,
+        paddingRight: 16,
+        paddingBottom: 16,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexShrink: 0,
       }}>
@@ -533,13 +536,14 @@ export default function AdminView({
         left: 0,
         right: 0,
         zIndex: 40,
-        background: T.white,
-        borderTop: `1px solid ${T.border}`,
-        display: 'flex',
-        alignItems: 'stretch',
-        boxShadow: '0 -1px 4px rgba(0,0,0,0.04)',
-        paddingBottom: 'max(6px, env(safe-area-inset-bottom, 6px))',
       }}>
+        <div style={{
+          background: T.white,
+          borderTop: `1px solid ${T.border}`,
+          display: 'flex',
+          alignItems: 'stretch',
+          boxShadow: '0 -1px 4px rgba(0,0,0,0.04)',
+        }}>
         {[
           { id: 'dashboard', label: 'Dashboard', Icon: IconBarChart },
           { id: 'pagos', label: 'Pagos', Icon: IconCreditCard },
@@ -555,7 +559,7 @@ export default function AdminView({
                 flex: 1, background: 'none', border: 'none', cursor: 'pointer',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: 3, color: active ? T.green : T.textLight, fontFamily: T.font,
-                minHeight: 48, padding: '8px 0 6px', position: 'relative',
+                minHeight: 50, padding: '8px 0 4px', position: 'relative',
               }}
             >
               {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 24, height: 2, background: T.green, borderRadius: '0 0 3px 3px' }} />}
@@ -564,6 +568,8 @@ export default function AdminView({
             </button>
           );
         })}
+        </div>
+        <div style={{ background: T.white, height: 'env(safe-area-inset-bottom, 0px)' }} />
       </div>
 
       {/* Modals */}
