@@ -1,4 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
+import { sortPaymentsNewestFirst } from '../utils';
+import { IconBarChart, IconCreditCard, IconUsers, IconSettings, IconBanknote, IconDollarSign, IconSearch, IconCheckCircle, IconAlertCircle } from '../icons';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -32,7 +34,7 @@ const T = {
   purple: '#7C3AED',
   purpleBg: '#F5F3FF',
   purpleText: '#5B21B6',
-  bg: '#FAFBFC',
+  bg: '#F8FAFC',
   white: '#FFFFFF',
   border: '#E8ECF0',
   text: '#1F2937',
@@ -51,22 +53,19 @@ const STATUS_CFG = {
 
 const fmt = (n) => '$' + Number(n || 0).toLocaleString('es-AR', { minimumFractionDigits: 0 });
 
-// Parse "DD/MM/YYYY" date strings for correct chronological sorting
-const parseDate = (dateStr) => {
-  if (!dateStr) return 0;
-  const parts = dateStr.split('/');
-  if (parts.length === 3) {
-    // parts[0] = day, parts[1] = month, parts[2] = year
-    return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
-  }
-  return 0;
-};
-
-const byDateDesc = (a, b) => parseDate(b.fecha) - parseDate(a.fecha);
-
 const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 const famLabel = (id) => id ? `FAM-${id}` : '';
+
+// Deterministic accent color per family (for left border visual differentiation)
+const FAMILY_BORDER_COLORS = ['#2E7D32','#1565C0','#E65100','#6A1B9A','#00838F','#AD1457','#F57F17','#4527A0'];
+const getFamilyColor = (familiaId) => {
+  if (!familiaId) return FAMILY_BORDER_COLORS[0];
+  let hash = 0;
+  const s = String(familiaId);
+  for (let i = 0; i < s.length; i++) hash = s.charCodeAt(i) + ((hash << 5) - hash);
+  return FAMILY_BORDER_COLORS[Math.abs(hash) % FAMILY_BORDER_COLORS.length];
+};
 
 // ─── Shared micro-components ──────────────────────────────────────────────────
 
@@ -117,7 +116,7 @@ function PrimaryBtn({ children, onClick, disabled, style, danger }) {
         padding: '10px 18px', borderRadius: 10, border: 'none',
         background: danger
           ? T.red
-          : 'linear-gradient(135deg,#1B5E20,#2E7D32)',
+          : T.green,
         color: 'white', fontSize: 14, fontWeight: 600,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.5 : 1,
@@ -359,7 +358,8 @@ export default function AdminView({
       }
       if (paymentFilter !== 'todos' && p.estado !== paymentFilter) return false;
       return true;
-    }).sort(byDateDesc);
+    });
+    return sortPaymentsNewestFirst(result);
   }, [payments, paymentSearch, paymentFilter, getStudentName]);
 
   const filteredStudents = useMemo(() => {
@@ -370,6 +370,7 @@ export default function AdminView({
       normalizeStr(s.apellido).includes(q) ||
       String(s.legajo).includes(q) ||
       String(s.familiaId || '').toLowerCase().includes(q) ||
+      famLabel(s.familiaId).toLowerCase().includes(q) ||
       normalizeStr(s.email || '').includes(q) ||
       normalizeStr(s.responsable || '').includes(q)
     );
@@ -442,7 +443,7 @@ export default function AdminView({
       {/* Header */}
       <div style={{
         background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
-        padding: '18px 16px 16px',
+        padding: 'max(18px, env(safe-area-inset-top)) 16px 16px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexShrink: 0,
       }}>
@@ -532,11 +533,11 @@ export default function AdminView({
         boxShadow: '0 -2px 12px rgba(0,0,0,0.06)',
       }}>
         {[
-          { id: 'dashboard', label: 'Dashboard', icon: '◈' },
-          { id: 'pagos', label: 'Pagos', icon: '₱' },
-          { id: 'alumnos', label: 'Alumnos', icon: '👤' },
-          { id: 'config', label: 'Config', icon: '⚙' },
-        ].map(({ id, label, icon }) => {
+          { id: 'dashboard', label: 'Dashboard', Icon: IconBarChart },
+          { id: 'pagos', label: 'Pagos', Icon: IconCreditCard },
+          { id: 'alumnos', label: 'Alumnos', Icon: IconUsers },
+          { id: 'config', label: 'Config', Icon: IconSettings },
+        ].map(({ id, label, Icon }) => {
           const active = tab === id;
           return (
             <button
@@ -549,9 +550,9 @@ export default function AdminView({
                 position: 'relative',
               }}
             >
-              {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 28, height: 3, background: T.green, borderRadius: '0 0 3px 3px' }} />}
-              <span style={{ fontSize: 16 }}>{icon}</span>
-              <span style={{ fontSize: 10, fontWeight: active ? 700 : 500 }}>{label}</span>
+              {active && <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: 24, height: 2, background: T.green, borderRadius: '0 0 3px 3px' }} />}
+              <Icon size={20} color={active ? T.green : T.textLight} />
+              <span style={{ fontSize: 10, fontWeight: active ? 600 : 500 }}>{label}</span>
             </button>
           );
         })}
@@ -625,7 +626,7 @@ function AccumulatedDebtAlert({ families, onOpenDebtors }) {
         borderRadius: 14, padding: '14px 16px',
         display: 'flex', alignItems: 'center', gap: 10,
       }}>
-        <span style={{ fontSize: 20, lineHeight: 1 }}>✓</span>
+        <IconCheckCircle size={20} color="#059669" />
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: '#059669' }}>Sin deuda acumulada</div>
           <div style={{ fontSize: 11, color: '#34D399', marginTop: 2 }}>Ninguna familia debe más de 1 mes</div>
@@ -645,7 +646,7 @@ function AccumulatedDebtAlert({ families, onOpenDebtors }) {
     }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-        <span style={{ fontSize: 15 }}>⚠</span>
+        <IconAlertCircle size={15} color={T.red} />
         <span style={{ fontSize: 14, fontWeight: 700, color: T.red }}>ALERTA: Deuda Acumulada</span>
       </div>
       <div style={{ fontSize: 12, color: '#991B1B', marginBottom: 12 }}>
@@ -667,7 +668,7 @@ function AccumulatedDebtAlert({ families, onOpenDebtors }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11 }}>🔴</span>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: T.red, display: 'inline-block', flexShrink: 0 }} />
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>
                     Familia {family.apellido}
                   </span>
@@ -678,7 +679,7 @@ function AccumulatedDebtAlert({ families, onOpenDebtors }) {
                   )}
                 </div>
                 {family.responsable && (
-                  <div style={{ fontSize: 11, color: T.textLight, marginTop: 1 }}>👤 {family.responsable}</div>
+                  <div style={{ fontSize: 11, color: T.textLight, marginTop: 1 }}>{family.responsable}</div>
                 )}
               </div>
               <span style={{ fontSize: 14, fontWeight: 700, color: T.red }}>{fmt(family.totalDebt)}</span>
@@ -688,7 +689,7 @@ function AccumulatedDebtAlert({ families, onOpenDebtors }) {
             </div>
             {family.email && (
               <a href={`mailto:${family.email}`} style={{ fontSize: 11, color: T.green, marginBottom: 3, display: 'block', textDecoration: 'none' }}>
-                ✉ {family.email}
+                {family.email}
               </a>
             )}
             <div style={{ fontSize: 11, color: T.gray }}>
@@ -729,28 +730,27 @@ function AccumulatedDebtAlert({ families, onOpenDebtors }) {
 
 function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStudents, getCuota, accumulatedDebtFamilies, onOpenDebtors, onOpenAddPayment, onNavigatePayments }) {
   const [expandedId, setExpandedId] = useState(null);
-  const recentPayments = [...payments].sort(byDateDesc).slice(0, 5);
+  const recentPayments = sortPaymentsNewestFirst(payments).slice(0, 5);
 
   const kpiData = [
-    { label: 'Recaudado', value: fmt(kpis.recaudado), icon: '↑', color: T.greenText, bg: T.greenBg, border: '#D1FAE5' },
-    { label: 'Pendiente', value: fmt(kpis.pendiente), icon: '◷', color: T.amberText, bg: T.amberBg, border: '#FDE68A' },
-    { label: 'Con deuda', value: kpis.conDeuda, icon: '⚠', color: T.redText, bg: T.redBg, border: '#FECACA', suffix: `/${kpis.totalFamilias} fam.` },
-    { label: 'Deuda total', value: fmt(kpis.deudaTotal), icon: '!', color: T.purpleText, bg: T.purpleBg, border: '#DDD6FE' },
+    { label: 'Recaudado', value: fmt(kpis.recaudado), color: T.greenText, bg: T.greenBg, border: '#D1FAE5' },
+    { label: 'Pendiente', value: fmt(kpis.pendiente), color: T.amberText, bg: T.amberBg, border: '#FDE68A' },
+    { label: 'Con deuda', value: kpis.conDeuda, color: T.redText, bg: T.redBg, border: '#FECACA', suffix: `/${kpis.totalFamilias} fam.` },
+    { label: 'Deuda total', value: fmt(kpis.deudaTotal), color: T.purpleText, bg: T.purpleBg, border: '#DDD6FE' },
   ];
 
   return (
     <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* KPI 2×2 grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {kpiData.map(({ label, value, icon, color, bg, border, suffix }) => (
+        {kpiData.map(({ label, value, color, bg, border, suffix }) => (
           <div key={label} style={{
             background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: '16px',
           }}>
-            <div style={{ fontSize: 18, marginBottom: 4 }}>{icon}</div>
             <div style={{ fontSize: 11, color, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
               {label}
             </div>
-            <div style={{ fontSize: 18, fontWeight: 800, color, lineHeight: 1.2, marginTop: 4 }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1.2, marginTop: 4 }}>
               {value}{suffix || ''}
             </div>
           </div>
@@ -796,7 +796,7 @@ function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStude
           style={{ flex: 1, textAlign: 'center', background: T.red }}
           danger
         >
-          ⚠ Deudores
+          Deudores
         </PrimaryBtn>
       </div>
 
@@ -833,10 +833,15 @@ function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStude
                 >
                   <div style={{
                     width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                    background: p.metodo === 'MercadoPago' ? '#E0F2FE' : p.metodo === 'Efectivo' ? T.greenBg : T.grayBg,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+                    background: p.metodo === 'MercadoPago' ? '#EFF6FF' : p.metodo === 'Efectivo' ? T.greenBg : T.grayBg,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
-                    {p.metodo === 'MercadoPago' ? '💳' : p.metodo === 'Efectivo' ? '💵' : '🏦'}
+                    {p.metodo === 'MercadoPago'
+                      ? <IconCreditCard size={16} color="#2563EB" />
+                      : p.metodo === 'Efectivo'
+                        ? <IconDollarSign size={16} color={T.green} />
+                        : <IconBanknote size={16} color={T.gray} />
+                    }
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -898,7 +903,7 @@ function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, g
           <input
             value={search}
             onChange={e => onSearch(e.target.value)}
-            placeholder="🔍  Buscar alumno, FAM, legajo o ref..."
+            placeholder="Buscar alumno, FAM, legajo o ref..."
             style={{
               flex: 1, padding: '9px 12px', borderRadius: 8,
               border: `1.5px solid ${T.border}`, fontSize: 13,
@@ -909,8 +914,8 @@ function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, g
             onClick={onOpenAdd}
             style={{
               padding: '9px 14px', borderRadius: 8, border: 'none',
-              background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
-              color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+              background: T.green,
+              color: 'white', fontWeight: 600, fontSize: 13, cursor: 'pointer',
               whiteSpace: 'nowrap', fontFamily: T.font,
             }}
           >
@@ -923,10 +928,11 @@ function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, g
               key={key}
               onClick={() => onFilter(key)}
               style={{
-                padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                padding: '10px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
                 background: filter === key ? T.green : T.grayBg,
                 color: filter === key ? 'white' : T.textMid,
-                fontSize: 12, fontWeight: 600, fontFamily: T.font,
+                fontSize: 13, fontWeight: 600, fontFamily: T.font,
+                minHeight: 44,
                 transition: 'all 0.2s',
               }}
             >
@@ -943,13 +949,13 @@ function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, g
             onClick={() => onBulkAction('verify', filteredPayments)}
             style={{
               width: '100%', padding: '11px', borderRadius: 10, border: 'none',
-              background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
-              color: 'white', fontSize: 13, fontWeight: 700,
+              background: T.green,
+              color: 'white', fontSize: 13, fontWeight: 600,
               cursor: 'pointer', fontFamily: T.font,
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
             }}
           >
-            ✓ Verificar todos los pendientes ({filteredPayments.length})
+            Verificar todos los pendientes ({filteredPayments.length})
           </button>
         </div>
       )}
@@ -973,7 +979,7 @@ function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, g
       {/* List */}
       <div style={{ padding: '10px 14px', flex: 1 }}>
         {filteredPayments.length === 0 ? (
-          <EmptyState icon="🔍" text="No se encontraron pagos con estos filtros" />
+          <EmptyState icon={<IconSearch size={32} color={T.textLight} />} text="No se encontraron pagos con estos filtros" />
         ) : (
           filteredPayments.map((p, i) => (
             <PaymentRow
@@ -1085,21 +1091,21 @@ function PaymentExpandedDetail({ p, allStudents, getCuota, onUpdatePayment }) {
           {p.estado === 'pendiente' && (
             <>
               <PrimaryBtn onClick={() => onUpdatePayment(p.id, 'verificado')} style={{ fontSize: 12, padding: '7px 14px' }}>
-                ✓ Verificar
+                Verificar
               </PrimaryBtn>
               <PrimaryBtn onClick={() => onUpdatePayment(p.id, 'rechazado')} danger style={{ fontSize: 12, padding: '7px 14px' }}>
-                ✕ Rechazar
+                Rechazar
               </PrimaryBtn>
             </>
           )}
           {p.estado === 'verificado' && (
             <GhostBtn onClick={() => onUpdatePayment(p.id, 'pendiente')} style={{ fontSize: 12, padding: '7px 14px' }}>
-              ↩ Revertir a pendiente
+              Revertir a pendiente
             </GhostBtn>
           )}
           {p.estado === 'rechazado' && (
             <GhostBtn onClick={() => onUpdatePayment(p.id, 'pendiente')} style={{ fontSize: 12, padding: '7px 14px' }}>
-              ↩ Cambiar a pendiente
+              Cambiar a pendiente
             </GhostBtn>
           )}
         </div>
@@ -1109,8 +1115,10 @@ function PaymentExpandedDetail({ p, allStudents, getCuota, onUpdatePayment }) {
 }
 
 function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuota, onToggle, onUpdatePayment }) {
-  const names = (p.studentIds || []).map(getStudentName);
-  const legs = (p.studentIds || []).join(', ');
+  const namesWithLegs = (p.studentIds || []).map(id => {
+    const st = allStudents.find(s => s.legajo === id);
+    return st ? `${st.nombre} ${st.apellido} (${id})` : `Leg. ${id}`;
+  });
   return (
     <Card style={{ marginBottom: 8, overflow: 'hidden' }}>
       <button
@@ -1123,19 +1131,23 @@ function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuot
       >
         <div style={{
           width: 34, height: 34, borderRadius: 8, flexShrink: 0,
-          background: p.metodo === 'MercadoPago' ? '#DBEAFE' : p.metodo === 'Efectivo' ? T.greenBg : T.grayBg,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15,
+          background: p.metodo === 'MercadoPago' ? '#EFF6FF' : p.metodo === 'Efectivo' ? T.greenBg : T.grayBg,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          {p.metodo === 'MercadoPago' ? '💳' : p.metodo === 'Efectivo' ? '💵' : '🏦'}
+          {p.metodo === 'MercadoPago'
+            ? <IconCreditCard size={16} color="#2563EB" />
+            : p.metodo === 'Efectivo'
+              ? <IconDollarSign size={16} color={T.green} />
+              : <IconBanknote size={16} color={T.gray} />
+          }
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {names.slice(0, 2).join(', ')}{names.length > 2 ? ` +${names.length - 2}` : ''} — {p.mes}
+            {namesWithLegs.slice(0, 2).join(', ')}{namesWithLegs.length > 2 ? ` +${namesWithLegs.length - 2}` : ''} — {p.mes}
           </div>
           <div style={{ fontSize: 11, color: T.textLight, marginTop: 2 }}>
             {p.fecha || 'Sin fecha'} · {p.metodo}
             {p.familiaId && <span style={{ color: T.textLight }}> · {famLabel(p.familiaId)}</span>}
-            {legs && <span style={{ color: T.textLight }}> · Leg. {legs}</span>}
           </div>
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
@@ -1187,7 +1199,7 @@ function AlumnosTab({ students, search, payments, gs, getCuota, getStudentName, 
         <input
           value={search}
           onChange={e => onSearch(e.target.value)}
-          placeholder="🔍  Buscar por familia, alumno o legajo..."
+          placeholder="Buscar por familia, alumno o legajo..."
           style={{
             width: '100%', padding: '9px 12px', borderRadius: 8,
             border: `1.5px solid ${T.border}`, fontSize: 13,
@@ -1198,7 +1210,7 @@ function AlumnosTab({ students, search, payments, gs, getCuota, getStudentName, 
       <div style={{ padding: '10px 14px' }}>
         {families.length === 0 ? (
           <EmptyState
-            icon="👤"
+            icon={<IconUsers size={32} color={T.textLight} />}
             text={search ? `No se encontraron resultados para "${search}"` : 'No se encontraron alumnos'}
           />
         ) : (
@@ -1223,6 +1235,7 @@ function AlumnosTab({ students, search, payments, gs, getCuota, getStudentName, 
 function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit }) {
   const dueMonths = MONTHS.slice(0, CM + 1);
   const AVATAR_COLORS = ['#43A047', '#7B1FA2', '#1565C0', '#E65100', '#00838F', '#AD1457'];
+  const accentColor = getFamilyColor(family.familiaId);
 
   // Compute family-level debt summary
   let totalMonthlyFee = 0;
@@ -1243,16 +1256,16 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
     ? { label: `Debe ${fmt(totalDebt)}`, bg: T.redBg, color: T.redText }
     : hasPending
       ? { label: 'Pendiente', bg: T.amberBg, color: T.amberText }
-      : { label: 'Al día ✓', bg: T.greenBg, color: T.greenText };
+      : { label: 'Al día', bg: T.greenBg, color: T.greenText };
 
   // Family payment history (any payment involving a family student)
   const legajos = family.students.map(s => s.legajo);
-  const familyPayments = [...payments]
-    .filter(p => (p.studentIds || []).some(id => legajos.includes(id)))
-    .sort(byDateDesc);
+  const familyPayments = sortPaymentsNewestFirst(
+    payments.filter(p => (p.studentIds || []).some(id => legajos.includes(id)))
+  );
 
   return (
-    <Card style={{ marginBottom: 10, overflow: 'hidden' }}>
+    <Card style={{ marginBottom: 10, overflow: 'hidden', borderLeft: `4px solid ${accentColor}` }}>
       {/* Collapsed header */}
       <button
         onClick={onToggle}
@@ -1264,7 +1277,7 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
       >
         <div style={{
           width: 40, height: 40, borderRadius: 12, flexShrink: 0,
-          background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
+          background: `linear-gradient(135deg, ${accentColor}, ${accentColor}cc)`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: 'white', fontWeight: 700, fontSize: 16,
         }}>
@@ -1307,7 +1320,7 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
               ? { label: `Debe ${fmt(owedMonths.length * cuota)}`, bg: T.redBg, color: T.redText }
               : hasPend
                 ? { label: 'Pendiente', bg: T.amberBg, color: T.amberText }
-                : { label: cuota === 0 ? 'Beca 100%' : 'Al día ✓', bg: T.greenBg, color: T.greenText };
+                : { label: cuota === 0 ? 'Beca 100%' : 'Al día', bg: T.greenBg, color: T.greenText };
 
             return (
               <div key={student.legajo} style={{
@@ -1336,7 +1349,7 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
                 {/* Year grid */}
                 {cuota === 0 ? (
                   <div style={{ background: T.greenBg, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: T.greenText, fontWeight: 600, marginBottom: 8 }}>
-                    ✓ Cuota cubierta por beca al 100%
+                    Cuota cubierta por beca al 100%
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -1353,7 +1366,7 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
                         }}>
                           {MONTHS_SHORT[midx]}
                           <div style={{ fontSize: 8, marginTop: 1 }}>
-                            {status === 'ok' ? '✓' : status === 'pen' ? '◷' : status === 'no' ? '✗' : '·'}
+                            {status === 'ok' ? 'ok' : status === 'pen' ? 'pen' : status === 'no' ? 'no' : '-'}
                           </div>
                         </div>
                       );
@@ -1370,7 +1383,7 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
                     fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
                   }}
                 >
-                  ✏ Editar
+                  Editar
                 </button>
               </div>
             );
@@ -1415,7 +1428,9 @@ function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName,
   const hasPending = dueMonths.some(mes => gs(student.legajo, mes) === 'pen');
 
   // Get payments for this student
-  const studentPayments = [...payments].filter(p => (p.studentIds || []).includes(student.legajo)).sort(byDateDesc);
+  const studentPayments = sortPaymentsNewestFirst(
+    payments.filter(p => (p.studentIds || []).includes(student.legajo))
+  );
 
   const colors = ['#43A047', '#7B1FA2', '#1565C0', '#E65100', '#00838F', '#AD1457'];
   const avatarColor = colors[student.legajo % colors.length] || T.green;
@@ -1453,7 +1468,7 @@ function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName,
           ) : hasPending ? (
             <span style={{ padding: '2px 8px', borderRadius: 20, background: T.amberBg, color: T.amberText, fontSize: 11, fontWeight: 700 }}>Pendiente</span>
           ) : (
-            <span style={{ padding: '2px 8px', borderRadius: 20, background: T.greenBg, color: T.greenText, fontSize: 11, fontWeight: 700 }}>Al día ✓</span>
+            <span style={{ padding: '2px 8px', borderRadius: 20, background: T.greenBg, color: T.greenText, fontSize: 11, fontWeight: 700 }}>Al día</span>
           )}
         </div>
         <span style={{ color: T.textLight, fontSize: 12, flexShrink: 0 }}>{expanded ? '▲' : '▼'}</span>
@@ -1463,10 +1478,10 @@ function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName,
         <div style={{ borderTop: `1px solid ${T.border}`, padding: '16px 16px', animation: 'fadeIn 0.2s ease' }}>
           {/* Contact info */}
           <div style={{ marginBottom: 12, fontSize: 12, color: T.textMid, display: 'flex', flexDirection: 'column', gap: 3 }}>
-            {student.responsable && <div>👤 <strong>Responsable:</strong> {student.responsable}</div>}
-            {student.email && <div>✉ <a href={`mailto:${student.email}`} style={{ color: T.green }}>{student.email}</a></div>}
-            {student.telefono && <div>📞 <a href={`tel:${student.telefono}`} style={{ color: T.textMid, textDecoration: 'none' }}>{student.telefono}</a></div>}
-            {student.familiaId && <div style={{ color: T.textLight }}>🏠 {famLabel(student.familiaId)}</div>}
+            {student.responsable && <div><strong>Responsable:</strong> {student.responsable}</div>}
+            {student.email && <div><a href={`mailto:${student.email}`} style={{ color: T.green }}>{student.email}</a></div>}
+            {student.telefono && <div><a href={`tel:${student.telefono}`} style={{ color: T.textMid, textDecoration: 'none' }}>{student.telefono}</a></div>}
+            {student.familiaId && <div style={{ color: T.textLight }}>{famLabel(student.familiaId)}</div>}
           </div>
 
           {/* Year grid */}
@@ -1489,7 +1504,7 @@ function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName,
                   }}>
                     {MONTHS_SHORT[idx]}
                     <div style={{ fontSize: 9, marginTop: 1 }}>
-                      {status === 'ok' ? '✓' : status === 'pen' ? '◷' : status === 'no' ? '✗' : '·'}
+                      {status === 'ok' ? 'ok' : status === 'pen' ? 'pen' : status === 'no' ? 'no' : '-'}
                     </div>
                   </div>
                 );
@@ -1535,7 +1550,7 @@ function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName,
               fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font,
             }}
           >
-            ✏ Editar alumno
+            Editar alumno
           </button>
         </div>
       )}
@@ -1599,7 +1614,7 @@ function ConfigTab({ rates, allStudents, getCuota, onUpdateRate }) {
 
       {/* Total revenue */}
       <div style={{
-        background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
+        background: '#1B5E20',
         borderRadius: 12, padding: '16px',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
@@ -1609,7 +1624,7 @@ function ConfigTab({ rates, allStudents, getCuota, onUpdateRate }) {
             después de descuentos por becas
           </div>
         </div>
-        <div style={{ color: 'white', fontSize: 24, fontWeight: 800 }}>{fmt(totalReal)}</div>
+        <div style={{ color: 'white', fontSize: 24, fontWeight: 700 }}>{fmt(totalReal)}</div>
       </div>
     </div>
   );
@@ -1655,7 +1670,7 @@ function DebtorsModal({ debtors, onClose }) {
       />
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
         {debtors.length === 0 ? (
-          <EmptyState icon="🎉" text="¡Sin deudores! Todas las familias están al día." />
+          <EmptyState icon={<IconCheckCircle size={32} color={T.greenLight} />} text="Sin deudores. Todas las familias están al día." />
         ) : (
           debtors.map((family, i) => (
             <Card key={family.familiaId || i} style={{ marginBottom: 10, padding: '14px' }}>
@@ -1673,22 +1688,22 @@ function DebtorsModal({ debtors, onClose }) {
                     )}
                   </div>
                   {family.responsable && (
-                    <div style={{ fontSize: 12, color: T.textMid, marginTop: 2 }}>👤 {family.responsable}</div>
+                    <div style={{ fontSize: 12, color: T.textMid, marginTop: 2 }}>{family.responsable}</div>
                   )}
                   <div style={{ fontSize: 11, color: T.textLight, marginTop: 1 }}>
                     {family.students.length} alumno{family.students.length !== 1 ? 's' : ''}
                   </div>
                 </div>
-                <div style={{ fontWeight: 800, fontSize: 15, color: T.redText }}>{fmt(family.totalDebt)}</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: T.redText }}>{fmt(family.totalDebt)}</div>
               </div>
 
               {/* Contact */}
               <div style={{ fontSize: 11, color: T.textMid, display: 'flex', gap: 14, marginBottom: 8, flexWrap: 'wrap' }}>
                 {family.email && (
-                  <a href={`mailto:${family.email}`} style={{ color: T.green, textDecoration: 'none' }}>✉ {family.email}</a>
+                  <a href={`mailto:${family.email}`} style={{ color: T.green, textDecoration: 'none' }}>{family.email}</a>
                 )}
                 {family.telefono && (
-                  <a href={`tel:${family.telefono}`} style={{ color: T.textMid, textDecoration: 'none' }}>📞 {family.telefono}</a>
+                  <a href={`tel:${family.telefono}`} style={{ color: T.textMid, textDecoration: 'none' }}>{family.telefono}</a>
                 )}
               </div>
 
@@ -1911,7 +1926,7 @@ function EditStudentModal({ student, rates, getCuota, onSubmit, onClose }) {
               <div style={{ fontSize: 12, color: T.greenText, fontWeight: 600 }}>Cuota resultante</div>
               {beca > 0 && <div style={{ fontSize: 11, color: T.greenText, opacity: 0.8 }}>Con {Math.round(beca * 100)}% de beca</div>}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: T.green }}>{fmt(previewCuota)}</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: T.green }}>{fmt(previewCuota)}</div>
           </div>
         </div>
       </div>
@@ -1969,12 +1984,14 @@ function ModalHeader({ title, onClose }) {
         onClick={onClose}
         style={{
           background: T.grayBg, border: 'none', borderRadius: '50%',
-          width: 28, height: 28, cursor: 'pointer', fontSize: 14, color: T.textMid,
+          width: 44, height: 44, cursor: 'pointer', color: T.textMid,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: T.font,
+          fontFamily: T.font, flexShrink: 0,
         }}
       >
-        ✕
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
       </button>
     </div>
   );
@@ -1994,10 +2011,13 @@ function ConfirmDialog({ type, count, onConfirm, onCancel }) {
         boxShadow: '0 8px 40px rgba(0,0,0,0.25)',
         animation: 'fadeIn 0.2s ease', maxWidth: 380, width: '100%',
       }}>
-        <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 14 }}>
-          {isVerify ? '✅' : '↩'}
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+          {isVerify
+            ? <IconCheckCircle size={40} color={T.greenLight} />
+            : <IconAlertCircle size={40} color={T.amber} />
+          }
         </div>
-        <div style={{ fontWeight: 800, fontSize: 17, color: T.text, textAlign: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 700, fontSize: 17, color: T.text, textAlign: 'center', marginBottom: 8 }}>
           {isVerify ? `¿Verificar ${count} pago${count !== 1 ? 's' : ''}?` : `¿Revertir ${count} pago${count !== 1 ? 's' : ''} a pendiente?`}
         </div>
         <div style={{ fontSize: 13, color: T.textMid, textAlign: 'center', marginBottom: 24, lineHeight: 1.6 }}>
@@ -2017,7 +2037,7 @@ function ConfirmDialog({ type, count, onConfirm, onCancel }) {
               cursor: 'pointer', fontFamily: T.font,
             }}
           >
-            {isVerify ? '✓ Verificar todos' : '↩ Revertir todos'}
+            {isVerify ? 'Verificar todos' : 'Revertir todos'}
           </button>
         </div>
       </div>
@@ -2028,7 +2048,13 @@ function ConfirmDialog({ type, count, onConfirm, onCancel }) {
 function EmptyState({ icon, text }) {
   return (
     <div style={{ textAlign: 'center', padding: '40px 20px', color: T.textLight }}>
-      <div style={{ fontSize: 44, marginBottom: 12 }}>{icon}</div>
+      <div style={{
+        width: 64, height: 64, borderRadius: 16, background: T.grayBg,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 12px',
+      }}>
+        {icon}
+      </div>
       <div style={{ fontSize: 14, fontWeight: 500 }}>{text}</div>
     </div>
   );

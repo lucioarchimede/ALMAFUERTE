@@ -1,17 +1,7 @@
 import { useState, useMemo } from 'react';
 import { IconDownload, IconFileText } from '../icons';
-import { formatCurrency, statusConfig, methodLabel, monthNameToNum } from '../utils';
+import { formatCurrency, statusConfig, methodLabel, monthNameToNum, sortPaymentsNewestFirst } from '../utils';
 import { MONTHS } from '../store';
-
-const parseDate = (dateStr) => {
-  if (!dateStr) return 0;
-  const parts = dateStr.split('/');
-  if (parts.length === 3) {
-    // parts[0] = day, parts[1] = month, parts[2] = year
-    return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
-  }
-  return 0;
-};
 
 export default function ComprobantesScreen({ state, dispatch, addToast }) {
   const { payments, family } = state;
@@ -19,28 +9,29 @@ export default function ComprobantesScreen({ state, dispatch, addToast }) {
   const [monthFilter, setMonthFilter] = useState('todos');
 
   const filtered = useMemo(() => {
-    return [...payments].filter(p => {
+    const result = [...payments].filter(p => {
       if (childFilter !== 'todos' && !p.studentIds?.includes(Number(childFilter))) return false;
       if (monthFilter !== 'todos') {
         const monthObj = MONTHS.find(m => String(m.num) === monthFilter);
         if (!monthObj || p.mes !== monthObj.name) return false;
       }
       return true;
-    }).sort((a, b) => parseDate(b.fecha) - parseDate(a.fecha));
+    });
+    return sortPaymentsNewestFirst(result);
   }, [payments, childFilter, monthFilter]);
 
   const handleDownload = () => {
-    addToast('Comprobante descargado ✓', 'success');
+    addToast('Comprobante descargado', 'success');
   };
 
   return (
-    <div style={{ background: '#F5F5F0', minHeight: '100%' }}>
+    <div style={{ background: '#F8FAFC', minHeight: '100%' }}>
       {/* Header */}
       <div style={{
-        background: 'linear-gradient(160deg, #1B5E20 0%, #2E7D32 100%)',
-        padding: '24px 20px 24px',
+        background: 'linear-gradient(135deg, #1B5E20, #2E7D32)',
+        padding: 'max(24px, env(safe-area-inset-top)) 20px 24px',
       }}>
-        <h2 style={{ color: 'white', fontSize: 22, fontWeight: 800, margin: 0 }}>
+        <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700, margin: 0 }}>
           Mis comprobantes
         </h2>
         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, margin: '6px 0 0', fontWeight: 500 }}>
@@ -52,13 +43,13 @@ export default function ComprobantesScreen({ state, dispatch, addToast }) {
       <div style={{
         background: 'white',
         padding: '16px 16px',
-        borderBottom: '1px solid #EEEEEE',
+        borderBottom: '1px solid #E2E8F0',
         display: 'flex',
         gap: 10,
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
       }}>
         <select
           value={childFilter}
@@ -66,12 +57,12 @@ export default function ComprobantesScreen({ state, dispatch, addToast }) {
           style={{
             flex: 1,
             padding: '10px 12px',
-            borderRadius: 10,
-            border: '2px solid #EEEEEE',
+            borderRadius: 8,
+            border: '1px solid #E2E8F0',
             background: 'white',
             fontSize: 13,
             fontWeight: 600,
-            color: '#212121',
+            color: '#111827',
             cursor: 'pointer',
           }}
         >
@@ -87,12 +78,12 @@ export default function ComprobantesScreen({ state, dispatch, addToast }) {
           style={{
             flex: 1,
             padding: '10px 12px',
-            borderRadius: 10,
-            border: '2px solid #EEEEEE',
+            borderRadius: 8,
+            border: '1px solid #E2E8F0',
             background: 'white',
             fontSize: 13,
             fontWeight: 600,
-            color: '#212121',
+            color: '#111827',
             cursor: 'pointer',
           }}
         >
@@ -135,10 +126,10 @@ function ReceiptCard({ payment, family, onDownload }) {
   return (
     <div style={{
       background: 'white',
-      borderRadius: 14,
+      borderRadius: 12,
       overflow: 'hidden',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-      border: '1px solid #F0F0F0',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+      border: '1px solid #E2E8F0',
       display: 'flex',
       alignItems: 'stretch',
     }}>
@@ -165,25 +156,25 @@ function ReceiptCard({ payment, family, onDownload }) {
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontWeight: 800, fontSize: 14, margin: '0 0 2px', color: '#212121', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <p style={{ fontWeight: 700, fontSize: 14, margin: '0 0 2px', color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {concept}
           </p>
-          <p style={{ fontSize: 12, color: '#9E9E9E', margin: '0 0 4px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <p style={{ fontSize: 12, color: '#9CA3AF', margin: '0 0 4px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {childNames.join(', ')} · {payment.fecha}
           </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{
               padding: '2px 8px',
-              borderRadius: 20,
+              borderRadius: 4,
               background: cfg.bg,
               color: cfg.color,
-              fontSize: 10,
-              fontWeight: 700,
+              fontSize: 11,
+              fontWeight: 600,
             }}>
               {cfg.label}
             </span>
             {payment.referencia && (
-              <span style={{ fontSize: 11, color: '#9E9E9E', fontWeight: 500, fontFamily: 'monospace' }}>
+              <span style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 500, fontFamily: 'monospace' }}>
                 {payment.referencia}
               </span>
             )}
@@ -191,13 +182,13 @@ function ReceiptCard({ payment, family, onDownload }) {
         </div>
 
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <p style={{ fontWeight: 900, fontSize: 15, margin: '0 0 8px', color: '#212121' }}>
+          <p style={{ fontWeight: 700, fontSize: 15, margin: '0 0 8px', color: '#111827' }}>
             {formatCurrency(payment.monto)}
           </p>
           <button
             onClick={onDownload}
             style={{
-              background: '#E8F5E9',
+              background: '#F0FDF4',
               border: 'none',
               borderRadius: 8,
               padding: '7px 10px',
@@ -205,12 +196,12 @@ function ReceiptCard({ payment, family, onDownload }) {
               display: 'flex',
               alignItems: 'center',
               gap: 4,
-              color: '#2E7D32',
+              color: '#059669',
               fontSize: 11,
-              fontWeight: 700,
+              fontWeight: 600,
             }}
           >
-            <IconDownload size={13} color="#2E7D32" />
+            <IconDownload size={13} color="#059669" />
             Bajar
           </button>
         </div>
@@ -226,11 +217,18 @@ function EmptyState() {
       padding: '60px 24px',
       animation: 'fadeIn 0.3s ease',
     }}>
-      <p style={{ fontSize: 56, marginBottom: 16 }}>📄</p>
-      <h3 style={{ fontSize: 17, fontWeight: 800, color: '#424242', margin: '0 0 8px' }}>
+      <div style={{
+        width: 72, height: 72, borderRadius: 20,
+        background: '#F3F4F6',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 16px',
+      }}>
+        <IconFileText size={36} color="#9CA3AF" />
+      </div>
+      <h3 style={{ fontSize: 17, fontWeight: 700, color: '#374151', margin: '0 0 8px' }}>
         Aún no hay comprobantes
       </h3>
-      <p style={{ fontSize: 14, color: '#9E9E9E', fontWeight: 500, lineHeight: 1.6 }}>
+      <p style={{ fontSize: 14, color: '#9CA3AF', fontWeight: 500, lineHeight: 1.6 }}>
         Los comprobantes aparecen aquí automáticamente cuando realizás un pago
       </p>
     </div>

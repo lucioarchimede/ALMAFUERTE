@@ -33,7 +33,7 @@ export default function LoginScreen({ dispatch, onLogin }) {
     }}>
       {/* Green header */}
       <div style={{
-        background: 'linear-gradient(160deg, #1B5E20 0%, #2E7D32 50%, #388E3C 100%)',
+        background: 'linear-gradient(135deg, #1B5E20, #2E7D32)',
         padding: '60px 32px 48px',
         display: 'flex',
         flexDirection: 'column',
@@ -42,13 +42,6 @@ export default function LoginScreen({ dispatch, onLogin }) {
         position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* Background pattern */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: `radial-gradient(circle at 20% 20%, rgba(255,255,255,0.06) 1px, transparent 1px),
-                            radial-gradient(circle at 80% 60%, rgba(255,255,255,0.04) 1px, transparent 1px)`,
-          backgroundSize: '40px 40px',
-        }} />
 
         <div style={{ position: 'relative' }}>
           <SchoolLogo size={72} white />
@@ -58,7 +51,7 @@ export default function LoginScreen({ dispatch, onLogin }) {
           <h1 style={{
             color: 'white',
             fontSize: 22,
-            fontWeight: 800,
+            fontWeight: 700,
             letterSpacing: '-0.3px',
             margin: 0,
             lineHeight: 1.2,
@@ -76,14 +69,7 @@ export default function LoginScreen({ dispatch, onLogin }) {
           </p>
         </div>
 
-        {/* Gold accent line */}
-        <div style={{
-          width: 48,
-          height: 3,
-          background: 'linear-gradient(90deg, #F9A825, #FFD54F)',
-          borderRadius: 2,
-          position: 'relative',
-        }} />
+        <div style={{ width: 32, height: 2, background: 'rgba(255,255,255,0.3)', borderRadius: 2 }} />
       </div>
 
       {/* Form */}
@@ -117,12 +103,12 @@ export default function LoginScreen({ dispatch, onLogin }) {
               style={{
                 width: '100%',
                 padding: '14px 16px',
-                border: '2px solid #EEEEEE',
-                borderRadius: 12,
-                fontSize: 15,
-                fontFamily: 'Nunito, sans-serif',
+                border: '1px solid #E2E8F0',
+                borderRadius: 8,
+                fontSize: 16,
+                fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
                 color: '#212121',
-                background: '#FAFAFA',
+                background: 'white',
                 transition: 'border-color 0.2s',
               }}
               onFocus={e => e.target.style.borderColor = '#2E7D32'}
@@ -142,12 +128,12 @@ export default function LoginScreen({ dispatch, onLogin }) {
               style={{
                 width: '100%',
                 padding: '14px 16px',
-                border: '2px solid #EEEEEE',
-                borderRadius: 12,
-                fontSize: 15,
-                fontFamily: 'Nunito, sans-serif',
+                border: '1px solid #E2E8F0',
+                borderRadius: 8,
+                fontSize: 16,
+                fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
                 color: '#212121',
-                background: '#FAFAFA',
+                background: 'white',
                 transition: 'border-color 0.2s',
               }}
               onFocus={e => e.target.style.borderColor = '#2E7D32'}
@@ -164,7 +150,7 @@ export default function LoginScreen({ dispatch, onLogin }) {
               fontWeight: 700,
               padding: 0,
               textAlign: 'right',
-              fontFamily: 'Nunito, sans-serif',
+              fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
             }}
           >
             ¿Olvidaste tu contraseña?
@@ -176,15 +162,13 @@ export default function LoginScreen({ dispatch, onLogin }) {
             style={{
               width: '100%',
               padding: '16px',
-              background: loading ? '#81C784' : 'linear-gradient(135deg, #2E7D32, #388E3C)',
+              background: loading ? '#6B9E70' : '#1B5E20',
               color: 'white',
-              borderRadius: 14,
-              fontSize: 16,
-              fontWeight: 800,
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 600,
               border: 'none',
-              boxShadow: '0 4px 16px rgba(46,125,50,0.35)',
               marginTop: 4,
-              letterSpacing: '0.3px',
             }}
           >
             {loading ? 'Ingresando...' : 'Ingresar'}
@@ -204,18 +188,17 @@ export default function LoginScreen({ dispatch, onLogin }) {
           disabled={loading}
           style={{
             width: '100%',
-            padding: '15px',
-            background: 'linear-gradient(135deg, #F9A825, #FFB300)',
+            padding: '13px',
+            background: 'none',
             color: '#1B5E20',
-            borderRadius: 14,
-            fontSize: 15,
-            fontWeight: 800,
-            border: 'none',
-            boxShadow: '0 4px 16px rgba(249,168,37,0.3)',
+            borderRadius: 10,
+            fontSize: 14,
+            fontWeight: 600,
+            border: '1px solid #E2E8F0',
             letterSpacing: '0.2px',
           }}
         >
-          🎓 Ingresar como Demo
+          Ingresar como Demo
         </button>
 
         <p style={{

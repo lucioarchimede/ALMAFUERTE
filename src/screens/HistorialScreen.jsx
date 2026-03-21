@@ -1,17 +1,7 @@
 import { useState, useMemo } from 'react';
-import { IconChevronDown, IconChevronUp, IconDownload, IconFilter } from '../icons';
-import { formatCurrency, methodLabel, methodColor, statusConfig, getMonthName } from '../utils';
+import { IconChevronDown, IconChevronUp, IconDownload, IconFilter, IconCreditCard, IconBanknote, IconSearch } from '../icons';
+import { formatCurrency, methodLabel, methodColor, statusConfig, getMonthName, sortPaymentsNewestFirst } from '../utils';
 import { MONTHS } from '../store';
-
-const parseDate = (dateStr) => {
-  if (!dateStr) return 0;
-  const parts = dateStr.split('/');
-  if (parts.length === 3) {
-    // parts[0] = day, parts[1] = month, parts[2] = year
-    return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
-  }
-  return 0;
-};
 
 export default function HistorialScreen({ state, dispatch, addToast }) {
   const { payments, family } = state;
@@ -20,16 +10,17 @@ export default function HistorialScreen({ state, dispatch, addToast }) {
   const [expandedId, setExpandedId] = useState(null);
 
   const filtered = useMemo(() => {
-    return [...payments].filter(p => {
+    const result = [...payments].filter(p => {
       if (statusFilter === 'verificados' && p.estado !== 'verificado') return false;
       if (statusFilter === 'pendientes' && p.estado !== 'pendiente') return false;
       if (childFilter !== 'todos' && !p.studentIds?.includes(Number(childFilter))) return false;
       return true;
-    }).sort((a, b) => parseDate(b.fecha) - parseDate(a.fecha));
+    });
+    return sortPaymentsNewestFirst(result);
   }, [payments, statusFilter, childFilter]);
 
   const handleDownload = (payment) => {
-    addToast('Comprobante descargado ✓', 'success');
+    addToast('Comprobante descargado', 'success');
   };
 
   const toggleExpand = (id) => {
@@ -37,13 +28,13 @@ export default function HistorialScreen({ state, dispatch, addToast }) {
   };
 
   return (
-    <div style={{ background: '#F5F5F0', minHeight: '100%' }}>
+    <div style={{ background: '#F8FAFC', minHeight: '100%' }}>
       {/* Header */}
       <div style={{
-        background: 'linear-gradient(160deg, #1B5E20 0%, #2E7D32 100%)',
-        padding: '24px 20px 24px',
+        background: 'linear-gradient(135deg, #1B5E20, #2E7D32)',
+        padding: 'max(24px, env(safe-area-inset-top)) 20px 24px',
       }}>
-        <h2 style={{ color: 'white', fontSize: 22, fontWeight: 800, margin: 0, lineHeight: 1 }}>
+        <h2 style={{ color: 'white', fontSize: 22, fontWeight: 700, margin: 0, lineHeight: 1 }}>
           Historial de pagos
         </h2>
         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13, margin: '6px 0 0', fontWeight: 500 }}>
@@ -55,11 +46,11 @@ export default function HistorialScreen({ state, dispatch, addToast }) {
       <div style={{
         background: 'white',
         padding: '16px 16px',
-        borderBottom: '1px solid #EEEEEE',
+        borderBottom: '1px solid #E2E8F0',
         position: 'sticky',
         top: 0,
         zIndex: 10,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
       }}>
         {/* Status tabs */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
@@ -75,12 +66,11 @@ export default function HistorialScreen({ state, dispatch, addToast }) {
                 padding: '7px 14px',
                 borderRadius: 20,
                 border: 'none',
-                background: statusFilter === tab.key ? '#2E7D32' : '#F0F0F0',
-                color: statusFilter === tab.key ? 'white' : '#616161',
+                background: statusFilter === tab.key ? '#1B5E20' : '#F3F4F6',
+                color: statusFilter === tab.key ? 'white' : '#6B7280',
                 fontSize: 13,
-                fontWeight: 700,
+                fontWeight: 600,
                 cursor: 'pointer',
-                transition: 'all 0.2s ease',
               }}
             >
               {tab.label}
@@ -95,12 +85,12 @@ export default function HistorialScreen({ state, dispatch, addToast }) {
           style={{
             width: '100%',
             padding: '10px 14px',
-            borderRadius: 10,
-            border: '2px solid #EEEEEE',
+            borderRadius: 8,
+            border: '1px solid #E2E8F0',
             background: 'white',
             fontSize: 14,
             fontWeight: 600,
-            color: '#212121',
+            color: '#111827',
             cursor: 'pointer',
           }}
         >
@@ -114,11 +104,7 @@ export default function HistorialScreen({ state, dispatch, addToast }) {
       {/* Payment list */}
       <div style={{ padding: '12px 16px 24px' }}>
         {filtered.length === 0 ? (
-          <EmptyState
-            icon="🔍"
-            title="No se encontraron pagos"
-            subtitle="No hay pagos con los filtros seleccionados"
-          />
+          <EmptyState />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {filtered.map(payment => (
@@ -146,13 +132,15 @@ function PaymentCard({ payment, family, expanded, onToggle, onDownload }) {
   });
   const concept = payment.mes ? `Cuota ${payment.mes}` : 'Pago';
 
+  const isMP = payment.metodo?.toLowerCase() === 'mercadopago';
+
   return (
     <div style={{
       background: 'white',
-      borderRadius: 14,
+      borderRadius: 12,
       overflow: 'hidden',
-      boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-      border: '1px solid #F0F0F0',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+      border: '1px solid #E2E8F0',
     }}>
       {/* Main row */}
       <button
@@ -174,37 +162,39 @@ function PaymentCard({ payment, family, expanded, onToggle, onDownload }) {
           width: 40,
           height: 40,
           borderRadius: 10,
-          background: payment.metodo?.toLowerCase() === 'mercadopago' ? '#E3F2FD' : '#E8F5E9',
+          background: isMP ? '#EFF6FF' : '#F3F4F6',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
-          fontSize: 18,
         }}>
-          {payment.metodo?.toLowerCase() === 'mercadopago' ? '💳' : '🏦'}
+          {isMP
+            ? <IconCreditCard size={18} color="#2563EB" />
+            : <IconBanknote size={18} color="#374151" />
+          }
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontWeight: 800, fontSize: 14, margin: 0, color: '#212121', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <p style={{ fontWeight: 700, fontSize: 14, margin: 0, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {concept}
           </p>
-          <p style={{ fontSize: 12, color: '#9E9E9E', margin: '3px 0 0', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <p style={{ fontSize: 12, color: '#9CA3AF', margin: '3px 0 0', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {childNames.join(', ')} · {payment.fecha}
           </p>
         </div>
 
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          <p style={{ fontWeight: 900, fontSize: 15, margin: '0 0 4px', color: '#212121' }}>
+          <p style={{ fontWeight: 700, fontSize: 15, margin: '0 0 4px', color: '#111827' }}>
             {formatCurrency(payment.monto)}
           </p>
           <span style={{
             display: 'inline-flex',
-            padding: '3px 8px',
-            borderRadius: 20,
+            padding: '2px 8px',
+            borderRadius: 4,
             background: cfg.bg,
             color: cfg.color,
-            fontSize: 10,
-            fontWeight: 700,
+            fontSize: 11,
+            fontWeight: 600,
           }}>
             {cfg.label}
           </span>
@@ -212,8 +202,8 @@ function PaymentCard({ payment, family, expanded, onToggle, onDownload }) {
 
         <div style={{ marginLeft: 4, flexShrink: 0 }}>
           {expanded
-            ? <IconChevronUp size={16} color="#9E9E9E" />
-            : <IconChevronDown size={16} color="#9E9E9E" />
+            ? <IconChevronUp size={16} color="#9CA3AF" />
+            : <IconChevronDown size={16} color="#9CA3AF" />
           }
         </div>
       </button>
@@ -222,13 +212,13 @@ function PaymentCard({ payment, family, expanded, onToggle, onDownload }) {
       {expanded && (
         <div style={{
           padding: '0 16px 20px',
-          borderTop: '1px solid #F5F5F5',
+          borderTop: '1px solid #E2E8F0',
           animation: 'fadeIn 0.2s ease',
         }}>
           {/* Per-child breakdown */}
           {(payment.studentIds || []).length > 1 && (
             <div style={{ marginTop: 12, marginBottom: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#9E9E9E', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 8px' }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 8px' }}>
                 Alumnos incluidos
               </p>
               {(payment.studentIds || []).map(legajo => {
@@ -238,9 +228,9 @@ function PaymentCard({ payment, family, expanded, onToggle, onDownload }) {
                     display: 'flex',
                     justifyContent: 'space-between',
                     padding: '6px 0',
-                    borderBottom: '1px solid #F5F5F5',
+                    borderBottom: '1px solid #E2E8F0',
                   }}>
-                    <span style={{ fontSize: 13, color: '#424242', fontWeight: 600 }}>
+                    <span style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>
                       {child?.name || `Legajo ${legajo}`}
                     </span>
                   </div>
@@ -251,7 +241,7 @@ function PaymentCard({ payment, family, expanded, onToggle, onDownload }) {
 
           {/* Meta */}
           <div style={{
-            background: '#F9F9F9',
+            background: '#F8FAFC',
             borderRadius: 10,
             padding: '10px 12px',
             marginTop: 10,
@@ -270,20 +260,21 @@ function PaymentCard({ payment, family, expanded, onToggle, onDownload }) {
             style={{
               width: '100%',
               padding: '11px',
-              background: '#E8F5E9',
-              color: '#2E7D32',
+              background: '#F0FDF4',
+              color: '#059669',
               borderRadius: 10,
               fontSize: 13,
-              fontWeight: 700,
+              fontWeight: 600,
               border: 'none',
               marginTop: 10,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 6,
+              cursor: 'pointer',
             }}
           >
-            <IconDownload size={15} color="#2E7D32" />
+            <IconDownload size={15} color="#059669" />
             Descargar comprobante
           </button>
         </div>
@@ -295,11 +286,11 @@ function PaymentCard({ payment, family, expanded, onToggle, onDownload }) {
 function MetaRow({ label, value, mono, color }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: 12, color: '#9E9E9E', fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 600 }}>{label}</span>
       <span style={{
         fontSize: 12,
         fontWeight: 600,
-        color: color || '#424242',
+        color: color || '#374151',
         fontFamily: mono ? 'monospace' : 'inherit',
         maxWidth: '65%',
         textAlign: 'right',
@@ -311,16 +302,23 @@ function MetaRow({ label, value, mono, color }) {
   );
 }
 
-function EmptyState({ icon, title, subtitle }) {
+function EmptyState() {
   return (
     <div style={{
       textAlign: 'center',
       padding: '60px 20px',
       animation: 'fadeIn 0.3s ease',
     }}>
-      <p style={{ fontSize: 56, marginBottom: 16 }}>{icon}</p>
-      <h3 style={{ fontSize: 17, fontWeight: 800, color: '#424242', margin: '0 0 8px' }}>{title}</h3>
-      <p style={{ fontSize: 14, color: '#9E9E9E', fontWeight: 500 }}>{subtitle}</p>
+      <div style={{
+        width: 72, height: 72, borderRadius: 20,
+        background: '#F3F4F6',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 16px',
+      }}>
+        <IconSearch size={36} color="#9CA3AF" />
+      </div>
+      <h3 style={{ fontSize: 17, fontWeight: 700, color: '#374151', margin: '0 0 8px' }}>No se encontraron pagos</h3>
+      <p style={{ fontSize: 14, color: '#9CA3AF', fontWeight: 500 }}>No hay pagos con los filtros seleccionados</p>
     </div>
   );
 }

@@ -13,9 +13,27 @@ import HomeScreen from './screens/HomeScreen';
 import HistorialScreen from './screens/HistorialScreen';
 import ComprobantesScreen from './screens/ComprobantesScreen';
 import MasScreen from './screens/MasScreen';
-import { SchoolLogo } from './icons';
+import { SchoolLogo, IconUsers, IconSettings } from './icons';
+import { sortPaymentsNewestFirst } from './utils';
 
 const ADMIN_EMAILS = ['admin@almafuerte.edu.ar'];
+
+const INITIAL_NOTIFICATIONS = [
+  {
+    id: 'n1',
+    title: 'Pago verificado',
+    message: 'Cuota Febrero acreditada para tus hijos.',
+    timestamp: '5 Feb',
+    read: true,
+  },
+  {
+    id: 'n2',
+    title: 'Próximo vencimiento',
+    message: 'La cuota de Abril vence el 10/04.',
+    timestamp: 'Hoy',
+    read: false,
+  },
+];
 const CHILD_COLORS = ['#4CAF50', '#7B1FA2', '#1565C0', '#E65100', '#00838F', '#AD1457'];
 
 const SCREENS = {
@@ -33,6 +51,23 @@ export default function App() {
   const [dataError, setDataError] = useState(null);
 
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+
+  // Notification state
+  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+
+  const addNotification = useCallback((title, message) => {
+    setNotifications(prev => [{
+      id: `n-${Date.now()}`,
+      title,
+      message,
+      timestamp: 'Ahora',
+      read: false,
+    }, ...prev]);
+  }, []);
+
+  const markAllNotificationsRead = useCallback(() => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  }, []);
 
   // Admin state (loaded from Firestore)
   const [adminStudents, setAdminStudents] = useState([]);
@@ -75,7 +110,7 @@ export default function App() {
             getDocs(collection(db, 'payments')),
           ]);
           setAdminStudents(stuSnap.docs.map(d => d.data()));
-          setAdminPayments(paySnap.docs.map(d => ({ id: d.id, ...d.data() })));
+          setAdminPayments(sortPaymentsNewestFirst(paySnap.docs.map(d => ({ id: d.id, ...d.data() }))));
         } else {
           const famQuery = query(collection(db, 'Familias'), where('authUid', '==', firebaseUser.uid));
           const famSnap = await getDocs(famQuery);
@@ -146,8 +181,9 @@ export default function App() {
   }, []);
 
   const handleAdminAddPayment = useCallback(async (data) => {
-    const ref = await addDoc(collection(db, 'payments'), data);
-    setAdminPayments(prev => [{ id: ref.id, ...data }, ...prev]);
+    const dataWithTs = { ...data, createdAt: Date.now() };
+    const ref = await addDoc(collection(db, 'payments'), dataWithTs);
+    setAdminPayments(prev => [{ id: ref.id, ...dataWithTs }, ...prev]);
   }, []);
 
   const handleAdminUpdateRate = useCallback(async (nivel, value) => {
@@ -162,8 +198,11 @@ export default function App() {
 
   // ── Family payment handler ──────────────────────────────────────────────────
   const handleFamilyAddPayment = useCallback(async (paymentData) => {
-    const ref = await addDoc(collection(db, 'payments'), paymentData);
-    dispatch({ type: 'ADD_PAYMENT', payment: { id: ref.id, ...paymentData } });
+    const dataWithTs = { ...paymentData, createdAt: Date.now() };
+    const ref = await addDoc(collection(db, 'payments'), dataWithTs);
+    const fullPayment = { id: ref.id, ...dataWithTs };
+    dispatch({ type: 'ADD_PAYMENT', payment: fullPayment });
+    setAdminPayments(prev => [fullPayment, ...prev]);
   }, []);
 
   // ── 1. Firebase still initialising ─────────────────────────────────────────
@@ -219,14 +258,27 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-        <CurrentScreen state={state} dispatch={dispatch} addToast={addToast} onLogout={handleLogout} />
+      <div className="scroll-y" style={{ flex: 1, overflowX: 'hidden' }}>
+        <CurrentScreen
+          state={state}
+          dispatch={dispatch}
+          addToast={addToast}
+          onLogout={handleLogout}
+          notifications={notifications}
+          onMarkAllRead={markAllNotificationsRead}
+        />
       </div>
 
       <BottomNav currentScreen={state.currentScreen} dispatch={dispatch} />
 
       {state.showPaymentFlow && (
-        <PaymentFlow state={state} dispatch={dispatch} addToast={addToast} onAddPayment={handleFamilyAddPayment} />
+        <PaymentFlow
+          state={state}
+          dispatch={dispatch}
+          addToast={addToast}
+          onAddPayment={handleFamilyAddPayment}
+          onAddNotification={addNotification}
+        />
       )}
 
       <ToastContainer toasts={state.toasts} dispatch={dispatch} />
@@ -265,7 +317,7 @@ function ErrorScreen({ message, onLogout }) {
       background: 'white', gap: 16, padding: '0 32px', textAlign: 'center',
       fontFamily: "'IBM Plex Sans', sans-serif",
     }}>
-      <span style={{ fontSize: 48 }}>⚠️</span>
+      <div style={{ width: 64, height: 64, borderRadius: 16, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}><span style={{ fontSize: 32 }}>!</span></div>
       <p style={{ fontSize: 15, color: '#424242', fontWeight: 600, margin: 0 }}>{message}</p>
       <button
         onClick={onLogout}
@@ -292,36 +344,28 @@ function RoleSelectScreen({ email, studentCount, familyName, onSelectFamilias, o
   return (
     <div style={{
       height: '100%', display: 'flex', flexDirection: 'column',
-      background: 'white', fontFamily: "'IBM Plex Sans', 'Nunito', sans-serif",
+      background: '#F8FAFC', fontFamily: "'IBM Plex Sans', -apple-system, sans-serif",
     }}>
       {/* Green top strip */}
       <div style={{
-        background: 'linear-gradient(160deg, #1B5E20 0%, #2E7D32 100%)',
+        background: 'linear-gradient(135deg, #1B5E20, #2E7D32)',
         padding: '40px 24px 36px',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
-        position: 'relative', overflow: 'hidden',
       }}>
-        <div style={{
-          position: 'absolute', inset: 0,
-          backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px)',
-          backgroundSize: '28px 28px',
-        }} />
-        <div style={{ position: 'relative' }}>
-          <SchoolLogo size={68} white />
-        </div>
-        <div style={{ textAlign: 'center', position: 'relative' }}>
-          <h1 style={{ color: 'white', fontSize: 20, fontWeight: 800, margin: 0 }}>Colegio Almafuerte</h1>
-          <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 12, margin: '4px 0 0', letterSpacing: '0.5px' }}>
+        <SchoolLogo size={68} white />
+        <div style={{ textAlign: 'center' }}>
+          <h1 style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: 0 }}>Colegio Almafuerte</h1>
+          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12, margin: '4px 0 0', letterSpacing: '0.5px' }}>
             PORTAL DE COBRANZAS
           </p>
         </div>
-        <div style={{ width: 40, height: 3, background: 'linear-gradient(90deg,#F9A825,#FFD54F)', borderRadius: 2, position: 'relative' }} />
+        <div style={{ width: 32, height: 2, background: 'rgba(255,255,255,0.3)', borderRadius: 2 }} />
       </div>
 
       {/* Content */}
       <div style={{ flex: 1, padding: '32px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <p style={{ fontSize: 13, color: '#9E9E9E', textAlign: 'center', margin: '0 0 8px' }}>
-          Sesión iniciada como <strong style={{ color: '#212121' }}>{email}</strong>
+        <p style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', margin: '0 0 8px' }}>
+          Sesión iniciada como <strong style={{ color: '#111827' }}>{email}</strong>
         </p>
 
         {/* Portal Familias card */}
@@ -329,25 +373,26 @@ function RoleSelectScreen({ email, studentCount, familyName, onSelectFamilias, o
           onClick={onSelectFamilias}
           style={{
             width: '100%', padding: '20px', borderRadius: 16,
-            border: '2px solid #E8F5E9', background: '#F9FFF9',
+            border: '1px solid #E2E8F0', background: 'white',
             cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-            transition: 'all 0.2s',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{
               width: 48, height: 48, borderRadius: 12,
-              background: 'linear-gradient(135deg,#2E7D32,#43A047)',
+              background: '#1B5E20',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 22, flexShrink: 0,
-            }}>👨‍👩‍👧</div>
+              flexShrink: 0,
+            }}>
+              <IconUsers size={22} color="white" />
+            </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 16, color: '#212121', marginBottom: 3 }}>Portal Familias</div>
-              <div style={{ fontSize: 13, color: '#9E9E9E' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', marginBottom: 3 }}>Portal Familias</div>
+              <div style={{ fontSize: 13, color: '#9CA3AF' }}>
                 {familyName ? `Familia ${familyName}` : 'Ver como familia'}
               </div>
             </div>
-            <span style={{ marginLeft: 'auto', color: '#9E9E9E', fontSize: 18 }}>›</span>
+            <span style={{ marginLeft: 'auto', color: '#9CA3AF', fontSize: 18 }}>›</span>
           </div>
         </button>
 
@@ -356,25 +401,26 @@ function RoleSelectScreen({ email, studentCount, familyName, onSelectFamilias, o
           onClick={onSelectAdmin}
           style={{
             width: '100%', padding: '20px', borderRadius: 16,
-            border: '2px solid #E8F0FE', background: '#F8F9FF',
+            border: '1px solid #E2E8F0', background: 'white',
             cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-            transition: 'all 0.2s',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{
               width: 48, height: 48, borderRadius: 12,
-              background: 'linear-gradient(135deg,#1B5E20,#2E7D32)',
+              background: '#1B5E20',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 22, flexShrink: 0,
-            }}>⚙️</div>
+              flexShrink: 0,
+            }}>
+              <IconSettings size={22} color="white" />
+            </div>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 16, color: '#212121', marginBottom: 3 }}>Panel Administrativo</div>
-              <div style={{ fontSize: 13, color: '#9E9E9E' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: '#111827', marginBottom: 3 }}>Panel Administrativo</div>
+              <div style={{ fontSize: 13, color: '#9CA3AF' }}>
                 {studentCount} alumnos registrados
               </div>
             </div>
-            <span style={{ marginLeft: 'auto', color: '#9E9E9E', fontSize: 18 }}>›</span>
+            <span style={{ marginLeft: 'auto', color: '#9CA3AF', fontSize: 18 }}>›</span>
           </div>
         </button>
 
@@ -382,9 +428,9 @@ function RoleSelectScreen({ email, studentCount, familyName, onSelectFamilias, o
           <button
             onClick={onLogout}
             style={{
-              width: '100%', padding: '13px', borderRadius: 12,
-              background: '#FFF5F5', color: '#E53935',
-              border: '1.5px solid #FFCDD2', fontSize: 14, fontWeight: 700,
+              width: '100%', padding: '13px', borderRadius: 10,
+              background: 'none', color: '#6B7280',
+              border: '1px solid #E2E8F0', fontSize: 14, fontWeight: 600,
               cursor: 'pointer', fontFamily: 'inherit',
             }}
           >

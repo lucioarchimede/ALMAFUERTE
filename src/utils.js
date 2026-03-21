@@ -139,6 +139,31 @@ export const generateConceptName = (months) => {
   return `Cuotas ${allButLast} y ${last}`;
 };
 
+// ── Date parsing & payment sorting ───────────────────────────────────────────
+
+export const parseDateToTimestamp = (dateStr) => {
+  if (!dateStr) return Date.now(); // No date = treat as newest
+  const parts = dateStr.split('/');
+  if (parts.length === 3) {
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1; // JS months are 0-indexed
+    const year = parseInt(parts[2], 10);
+    return new Date(year, month, day).getTime();
+  }
+  return 0;
+};
+
+export const sortPaymentsNewestFirst = (payments) => {
+  return [...payments].sort((a, b) => {
+    // Prefer createdAt timestamp (most reliable — always set on new payments)
+    if (a.createdAt && b.createdAt) return b.createdAt - a.createdAt;
+    if (a.createdAt) return -1; // a is newer
+    if (b.createdAt) return 1;  // b is newer
+    // Fallback: parse DD/MM/YYYY fecha
+    return parseDateToTimestamp(b.fecha) - parseDateToTimestamp(a.fecha);
+  });
+};
+
 export const getDisplayDate = () => {
   const now = new Date();
   const d = String(now.getDate()).padStart(2, '0');

@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import {
   IconX, IconArrowLeft, IconCopy, IconCheck, AnimatedCheckmark, IconDownload,
+  IconCreditCard, IconAlertCircle, IconCheckCircle, IconBanknote,
 } from '../icons';
 import {
   formatCurrency, getAvailableMonths, computePaymentItems,
@@ -11,7 +12,7 @@ import { MONTHS } from '../store';
 
 // Steps: select-children | select-months | review | mp-loading | mp-success | transfer-details | transfer-confirm
 
-export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
+export function PaymentFlow({ state, dispatch, addToast, onAddPayment, onAddNotification }) {
   const { family, payments, paymentFlowPreselect } = state;
 
   const initialChildren = paymentFlowPreselect?.childId
@@ -39,7 +40,7 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
       else next.add(id);
       return next;
     });
-    setSelectedMonths(new Set()); // reset months when children change
+    setSelectedMonths(new Set());
   };
 
   const toggleAllChildren = () => {
@@ -96,6 +97,7 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
           referencia: paymentsToAdd[0].referencia,
           total: paymentsToAdd.reduce((s, p) => s + p.monto, 0),
         });
+        onAddNotification?.('Pago acreditado', `${concept} procesado por MercadoPago.`);
         setFlowStep('mp-success');
       } catch {
         setFlowStep(null);
@@ -120,6 +122,7 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
         referencia: paymentsToAdd[0].referencia,
         total: paymentsToAdd.reduce((s, p) => s + p.monto, 0),
       });
+      onAddNotification?.('Pago registrado', 'Transferencia pendiente de verificación.');
       setFlowStep('transfer-confirm');
       addToast('Pago registrado. Se verificará en 24-48hs', 'info');
     } catch {
@@ -127,7 +130,6 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
     }
   };
 
-  // Returns one Firestore payment document per selected month
   const buildPayments = (estado, metodo) => {
     const sortedMonths = [...selectedMonths].sort((a, b) => a - b);
     const fecha = getDisplayDate();
@@ -157,7 +159,7 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
   };
 
   const handleDownloadReceipt = () => {
-    addToast('Comprobante descargado ✓', 'success');
+    addToast('Comprobante descargado', 'success');
   };
 
   // Special full-screen states
@@ -169,12 +171,12 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
             <div className="spinner" />
           </div>
           <div style={{
-            width: 64, height: 64, borderRadius: '50%',
+            width: 64, height: 64, borderRadius: 16,
             background: 'rgba(255,255,255,0.15)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 20px',
           }}>
-            <span style={{ fontSize: 28 }}>💳</span>
+            <IconCreditCard size={32} color="white" />
           </div>
           <p style={{ color: 'white', fontSize: 18, fontWeight: 700, margin: 0 }}>
             Conectando con MercadoPago...
@@ -189,48 +191,48 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
 
   if (flowStep === 'mp-success') {
     return (
-      <FullOverlay bg="#F5F5F0">
+      <FullOverlay bg="#F8FAFC">
         <div style={{ width: '100%', maxWidth: 360, padding: 24 }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16, animation: 'scaleIn 0.4s ease' }}>
               <AnimatedCheckmark />
             </div>
-            <h2 style={{ fontSize: 26, fontWeight: 900, color: '#2E7D32', margin: '0 0 8px' }}>
-              ¡Pago realizado!
+            <h2 style={{ fontSize: 26, fontWeight: 700, color: '#1B5E20', margin: '0 0 8px' }}>
+              Pago realizado
             </h2>
-            <p style={{ color: '#616161', fontSize: 14, margin: 0 }}>
+            <p style={{ color: '#6B7280', fontSize: 14, margin: 0 }}>
               Tu pago fue procesado exitosamente
             </p>
           </div>
 
-          {/* Receipt summary */}
           {pendingPayment && (
             <div style={{
               background: 'white',
-              borderRadius: 16,
+              borderRadius: 12,
               padding: 20,
               marginBottom: 20,
-              boxShadow: '0 2px 16px rgba(0,0,0,0.08)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              border: '1px solid #E2E8F0',
             }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid #F0F0F0' }}>
-                <span style={{ fontSize: 13, color: '#9E9E9E', fontWeight: 600 }}>Concepto</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#212121', textAlign: 'right', maxWidth: '60%' }}>{pendingPayment.concept}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid #E2E8F0' }}>
+                <span style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 600 }}>Concepto</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#111827', textAlign: 'right', maxWidth: '60%' }}>{pendingPayment.concept}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, color: '#9E9E9E', fontWeight: 600 }}>Fecha</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#212121' }}>{pendingPayment.fecha}</span>
+                <span style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 600 }}>Fecha</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{pendingPayment.fecha}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, color: '#9E9E9E', fontWeight: 600 }}>Referencia</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: '#616161', fontFamily: 'monospace' }}>{pendingPayment.referencia}</span>
+                <span style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 600 }}>Referencia</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7280', fontFamily: 'monospace' }}>{pendingPayment.referencia}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 13, color: '#9E9E9E', fontWeight: 600 }}>Método</span>
+                <span style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 600 }}>Método</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: '#009EE3' }}>MercadoPago</span>
               </div>
-              <div style={{ background: '#E8F5E9', borderRadius: 10, padding: '12px 14px', marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#2E7D32' }}>Total pagado</span>
-                <span style={{ fontSize: 22, fontWeight: 900, color: '#2E7D32' }}>{formatCurrency(pendingPayment.total)}</span>
+              <div style={{ background: '#F0FDF4', borderRadius: 10, padding: '12px 14px', marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#059669' }}>Total pagado</span>
+                <span style={{ fontSize: 22, fontWeight: 700, color: '#059669' }}>{formatCurrency(pendingPayment.total)}</span>
               </div>
             </div>
           )}
@@ -241,19 +243,20 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
               width: '100%',
               padding: '14px',
               background: 'white',
-              color: '#2E7D32',
+              color: '#1B5E20',
               borderRadius: 12,
               fontSize: 15,
-              fontWeight: 700,
-              border: '2px solid #2E7D32',
+              fontWeight: 600,
+              border: '1px solid #E2E8F0',
               marginBottom: 10,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
+              cursor: 'pointer',
             }}
           >
-            <IconDownload size={18} color="#2E7D32" />
+            <IconDownload size={18} color="#1B5E20" />
             Descargar comprobante
           </button>
           <button
@@ -261,13 +264,13 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
             style={{
               width: '100%',
               padding: '16px',
-              background: 'linear-gradient(135deg, #2E7D32, #388E3C)',
+              background: '#1B5E20',
               color: 'white',
-              borderRadius: 14,
+              borderRadius: 12,
               fontSize: 16,
-              fontWeight: 800,
+              fontWeight: 600,
               border: 'none',
-              boxShadow: '0 4px 16px rgba(46,125,50,0.3)',
+              cursor: 'pointer',
             }}
           >
             Volver al inicio
@@ -279,26 +282,34 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
 
   if (flowStep === 'transfer-confirm') {
     return (
-      <FullOverlay bg="#F5F5F0">
+      <FullOverlay bg="#F8FAFC">
         <div style={{ width: '100%', maxWidth: 360, padding: 24 }}>
           <div style={{ textAlign: 'center', marginBottom: 28 }}>
-            <div style={{ fontSize: 64, marginBottom: 16, animation: 'scaleIn 0.4s ease' }}>⏳</div>
-            <h2 style={{ fontSize: 22, fontWeight: 900, color: '#212121', margin: '0 0 8px' }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: 16,
+              background: '#FFFBEB',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 20px',
+              animation: 'scaleIn 0.4s ease',
+            }}>
+              <IconAlertCircle size={32} color="#D97706" />
+            </div>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>
               Pago registrado
             </h2>
-            <p style={{ color: '#616161', fontSize: 14, lineHeight: 1.6, margin: 0 }}>
+            <p style={{ color: '#6B7280', fontSize: 14, lineHeight: 1.6, margin: 0 }}>
               Tu transferencia quedó registrada como{' '}
-              <strong style={{ color: '#FF8F00' }}>pendiente</strong>.<br />
+              <strong style={{ color: '#D97706' }}>pendiente</strong>.<br />
               Se verificará en <strong>24-48hs hábiles</strong>.
             </p>
           </div>
 
           {pendingPayment && (
-            <div style={{ background: '#FFF8E1', borderRadius: 14, padding: '14px 16px', marginBottom: 20, border: '1px solid #FFD54F' }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#E65100', margin: '0 0 4px' }}>
+            <div style={{ background: '#FFFBEB', borderRadius: 12, padding: '14px 16px', marginBottom: 20, border: '1px solid #FDE68A' }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#92400E', margin: '0 0 4px' }}>
                 {pendingPayment.concept}
               </p>
-              <p style={{ fontSize: 12, color: '#BF360C', margin: 0, fontWeight: 500 }}>
+              <p style={{ fontSize: 12, color: '#B45309', margin: 0, fontWeight: 500 }}>
                 Ref: {pendingPayment.referencia} · {formatCurrency(pendingPayment.total)}
               </p>
             </div>
@@ -309,13 +320,13 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
             style={{
               width: '100%',
               padding: '16px',
-              background: 'linear-gradient(135deg, #2E7D32, #388E3C)',
+              background: '#1B5E20',
               color: 'white',
-              borderRadius: 14,
+              borderRadius: 12,
               fontSize: 16,
-              fontWeight: 800,
+              fontWeight: 600,
               border: 'none',
-              boxShadow: '0 4px 16px rgba(46,125,50,0.3)',
+              cursor: 'pointer',
             }}
           >
             Volver al inicio
@@ -352,18 +363,18 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
       <div
         className="animate-slide-up"
         style={{
-          background: '#F5F5F0',
+          background: '#F8FAFC',
           borderRadius: '24px 24px 0 0',
           maxHeight: '90%',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          boxShadow: '0 -8px 40px rgba(0,0,0,0.2)',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.08)',
         }}
       >
         {/* Handle */}
         <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 0' }}>
-          <div style={{ width: 40, height: 4, background: '#DDDDDD', borderRadius: 2 }} />
+          <div style={{ width: 40, height: 4, background: '#E2E8F0', borderRadius: 2 }} />
         </div>
 
         {/* Header */}
@@ -377,24 +388,24 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
             {step !== 'select-children' && (
               <button
                 onClick={() => setStep(step === 'select-months' ? 'select-children' : 'select-months')}
-                style={{ background: 'none', padding: 4 }}
+                style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer' }}
               >
-                <IconArrowLeft size={20} color="#212121" />
+                <IconArrowLeft size={20} color="#111827" />
               </button>
             )}
             <div>
-              <h3 style={{ fontSize: 18, fontWeight: 800, color: '#212121', margin: 0, lineHeight: 1 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: 0, lineHeight: 1 }}>
                 {step === 'select-children' && 'Seleccioná los alumnos'}
                 {step === 'select-months' && 'Seleccioná las cuotas'}
                 {step === 'review' && 'Revisá y pagá'}
               </h3>
-              <p style={{ fontSize: 12, color: '#9E9E9E', margin: '3px 0 0', fontWeight: 500 }}>
+              <p style={{ fontSize: 12, color: '#9CA3AF', margin: '3px 0 0', fontWeight: 500 }}>
                 Paso {step === 'select-children' ? 1 : step === 'select-months' ? 2 : 3} de 3
               </p>
             </div>
           </div>
-          <button onClick={close} style={{ background: 'none', padding: 4 }}>
-            <IconX size={20} color="#616161" />
+          <button onClick={close} style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer' }}>
+            <IconX size={20} color="#6B7280" />
           </button>
         </div>
 
@@ -407,7 +418,7 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
                 flex: 1,
                 height: 3,
                 borderRadius: 2,
-                background: n <= stepNum ? '#2E7D32' : '#DDDDDD',
+                background: n <= stepNum ? '#1B5E20' : '#E2E8F0',
                 transition: 'background 0.3s ease',
               }} />
             );
@@ -444,7 +455,7 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
 
         {/* Footer button */}
         {step !== 'review' && (
-          <div style={{ padding: '18px 20px', background: '#F5F5F0', borderTop: '1px solid #EEEEEE' }}>
+          <div style={{ padding: '18px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
             <button
               onClick={() => {
                 if (step === 'select-children') setStep('select-months');
@@ -457,13 +468,16 @@ export function PaymentFlow({ state, dispatch, addToast, onAddPayment }) {
               style={{
                 width: '100%',
                 padding: '16px',
-                background: 'linear-gradient(135deg, #2E7D32, #388E3C)',
+                background: (
+                  (step === 'select-children' && selectedChildren.size === 0) ||
+                  (step === 'select-months' && selectedMonths.size === 0)
+                ) ? '#D1D5DB' : '#1B5E20',
                 color: 'white',
-                borderRadius: 14,
+                borderRadius: 12,
                 fontSize: 16,
-                fontWeight: 800,
+                fontWeight: 600,
                 border: 'none',
-                boxShadow: '0 4px 16px rgba(46,125,50,0.3)',
+                cursor: 'pointer',
               }}
             >
               {step === 'select-children' && `Continuar (${selectedChildren.size} alumn${selectedChildren.size === 1 ? 'o' : 'os'})`}
@@ -485,16 +499,17 @@ function StepSelectChildren({ family, selectedChildren, onToggle, onToggleAll })
         style={{
           width: '100%',
           padding: '12px 16px',
-          background: allSelected ? '#E8F5E9' : 'white',
-          borderRadius: 12,
-          border: `2px solid ${allSelected ? '#2E7D32' : '#EEEEEE'}`,
+          background: allSelected ? '#F0FDF4' : 'white',
+          borderRadius: 10,
+          border: `1px solid ${allSelected ? '#1B5E20' : '#E2E8F0'}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 10,
           fontSize: 14,
-          fontWeight: 700,
-          color: allSelected ? '#2E7D32' : '#616161',
+          fontWeight: 600,
+          color: allSelected ? '#1B5E20' : '#6B7280',
+          cursor: 'pointer',
         }}
       >
         <span>Seleccionar todos</span>
@@ -510,14 +525,13 @@ function StepSelectChildren({ family, selectedChildren, onToggle, onToggleAll })
               width: '100%',
               padding: '14px 16px',
               background: selected ? child.color + '12' : 'white',
-              borderRadius: 12,
-              border: `2px solid ${selected ? child.color + '66' : '#EEEEEE'}`,
+              borderRadius: 10,
+              border: `1px solid ${selected ? child.color + '66' : '#E2E8F0'}`,
               display: 'flex',
               alignItems: 'center',
               gap: 14,
               marginBottom: 8,
               cursor: 'pointer',
-              transition: 'all 0.2s ease',
             }}
           >
             <div style={{
@@ -526,19 +540,19 @@ function StepSelectChildren({ family, selectedChildren, onToggle, onToggleAll })
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               flexShrink: 0,
             }}>
-              <span style={{ fontSize: 18, fontWeight: 800, color: child.color }}>{child.initial}</span>
+              <span style={{ fontSize: 18, fontWeight: 700, color: child.color }}>{child.initial}</span>
             </div>
             <div style={{ flex: 1, textAlign: 'left' }}>
-              <p style={{ fontWeight: 800, fontSize: 14, margin: 0, color: '#212121' }}>{child.name}</p>
-              <p style={{ fontSize: 12, color: '#9E9E9E', margin: '2px 0 0', fontWeight: 500 }}>
+              <p style={{ fontWeight: 700, fontSize: 14, margin: 0, color: '#111827' }}>{child.name}</p>
+              <p style={{ fontSize: 12, color: '#9CA3AF', margin: '2px 0 0', fontWeight: 500 }}>
                 {child.grade} · Legajo {child.legajo}
               </p>
             </div>
             <div style={{ textAlign: 'right', marginRight: 8 }}>
-              <p style={{ fontSize: 13, fontWeight: 800, color: '#2E7D32', margin: 0 }}>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#1B5E20', margin: 0 }}>
                 {formatCurrency(child.cuota)}
               </p>
-              <p style={{ fontSize: 11, color: '#9E9E9E', margin: '2px 0 0' }}>por cuota</p>
+              <p style={{ fontSize: 11, color: '#9CA3AF', margin: '2px 0 0' }}>por cuota</p>
             </div>
             <Checkbox checked={selected} color={child.color} />
           </button>
@@ -552,11 +566,18 @@ function StepSelectMonths({ availableMonths, selectedMonths, onToggle }) {
   if (availableMonths.length === 0) {
     return (
       <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-        <p style={{ fontSize: 40, marginBottom: 12 }}>✅</p>
-        <p style={{ fontWeight: 700, fontSize: 16, color: '#212121', margin: '0 0 8px' }}>
-          ¡Todo al día!
+        <div style={{
+          width: 56, height: 56, borderRadius: 12,
+          background: '#F0FDF4',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          margin: '0 auto 12px',
+        }}>
+          <IconCheckCircle size={28} color="#059669" />
+        </div>
+        <p style={{ fontWeight: 700, fontSize: 16, color: '#111827', margin: '0 0 8px' }}>
+          Todo al día
         </p>
-        <p style={{ fontSize: 14, color: '#9E9E9E', fontWeight: 500 }}>
+        <p style={{ fontSize: 14, color: '#9CA3AF', fontWeight: 500 }}>
           Los alumnos seleccionados no tienen cuotas pendientes de pago.
         </p>
       </div>
@@ -565,7 +586,7 @@ function StepSelectMonths({ availableMonths, selectedMonths, onToggle }) {
 
   return (
     <div style={{ paddingBottom: 16 }}>
-      <p style={{ fontSize: 13, color: '#9E9E9E', fontWeight: 500, marginBottom: 14 }}>
+      <p style={{ fontSize: 13, color: '#9CA3AF', fontWeight: 500, marginBottom: 14 }}>
         Seleccioná una o más cuotas para pagar
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -580,26 +601,23 @@ function StepSelectMonths({ availableMonths, selectedMonths, onToggle }) {
               style={{
                 padding: '10px 16px',
                 borderRadius: 20,
-                border: `2px solid ${selected ? '#2E7D32' : isOverdue ? '#E5393544' : '#EEEEEE'}`,
+                border: `1px solid ${selected ? '#1B5E20' : isOverdue ? '#FECACA' : '#E2E8F0'}`,
                 background: selected
-                  ? '#2E7D32'
+                  ? '#1B5E20'
                   : isOverdue
-                    ? '#FFEBEE'
+                    ? '#FEF2F2'
                     : 'white',
-                color: selected ? 'white' : isOverdue ? '#E53935' : '#212121',
-                fontWeight: 700,
+                color: selected ? 'white' : isOverdue ? '#DC2626' : '#111827',
+                fontWeight: 600,
                 fontSize: 13,
                 cursor: 'pointer',
-                transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 5,
               }}
             >
-              {isOverdue && !selected && <span style={{ fontSize: 11 }}>⚠</span>}
-              {selected && <span style={{ fontSize: 11 }}>✓</span>}
               {month?.name}
-              {isOverdue && <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.8 }}> (vencida)</span>}
+              {isOverdue && <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.8 }}>(vencida)</span>}
             </button>
           );
         })}
@@ -609,21 +627,14 @@ function StepSelectMonths({ availableMonths, selectedMonths, onToggle }) {
 }
 
 function StepReview({ paymentItems, totalAmount, concept, onMercadoPago, onTransfer }) {
-  // Group by month
-  const byMonth = {};
-  for (const item of paymentItems) {
-    if (!byMonth[item.month]) byMonth[item.month] = [];
-    byMonth[item.month].push(item);
-  }
-
   return (
     <div style={{ paddingBottom: 20 }}>
       <div style={{
         background: 'white',
-        borderRadius: 14,
+        borderRadius: 12,
         overflow: 'hidden',
         marginBottom: 16,
-        border: '1px solid #EEEEEE',
+        border: '1px solid #E2E8F0',
       }}>
         {paymentItems.map((item, idx) => (
           <div key={`${item.childId}-${item.month}`} style={{
@@ -631,40 +642,39 @@ function StepReview({ paymentItems, totalAmount, concept, onMercadoPago, onTrans
             justifyContent: 'space-between',
             alignItems: 'center',
             padding: '13px 16px',
-            borderBottom: idx < paymentItems.length - 1 ? '1px solid #F5F5F5' : 'none',
+            borderBottom: idx < paymentItems.length - 1 ? '1px solid #E2E8F0' : 'none',
           }}>
             <div>
-              <p style={{ fontWeight: 700, fontSize: 13, margin: 0, color: '#212121' }}>
+              <p style={{ fontWeight: 700, fontSize: 13, margin: 0, color: '#111827' }}>
                 {item.child.shortName}
               </p>
-              <p style={{ fontSize: 12, color: '#9E9E9E', margin: '2px 0 0', fontWeight: 500 }}>
+              <p style={{ fontSize: 12, color: '#9CA3AF', margin: '2px 0 0', fontWeight: 500 }}>
                 Leg. {item.child.legajo} · Cuota {getMonthName(item.month)} {CURRENT_YEAR}
               </p>
             </div>
-            <span style={{ fontWeight: 800, fontSize: 15, color: '#212121' }}>
+            <span style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>
               {formatCurrency(item.amount)}
             </span>
           </div>
         ))}
-        {/* Divider */}
-        <div style={{ height: 1, background: '#2E7D32', opacity: 0.15, margin: '0 16px' }} />
+        <div style={{ height: 1, background: '#E2E8F0' }} />
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '14px 16px',
-          background: '#E8F5E9',
+          background: '#F0FDF4',
         }}>
-          <span style={{ fontWeight: 800, fontSize: 15, color: '#2E7D32' }}>
+          <span style={{ fontWeight: 700, fontSize: 15, color: '#059669' }}>
             Total ({paymentItems.length} cuota{paymentItems.length !== 1 ? 's' : ''})
           </span>
-          <span style={{ fontWeight: 900, fontSize: 22, color: '#2E7D32' }}>
+          <span style={{ fontWeight: 700, fontSize: 22, color: '#059669' }}>
             {formatCurrency(totalAmount)}
           </span>
         </div>
       </div>
 
-      <p style={{ fontSize: 12, color: '#9E9E9E', fontWeight: 600, marginBottom: 12, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+      <p style={{ fontSize: 12, color: '#9CA3AF', fontWeight: 600, marginBottom: 12, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
         Elegí el método de pago
       </p>
 
@@ -676,19 +686,19 @@ function StepReview({ paymentItems, totalAmount, concept, onMercadoPago, onTrans
           padding: '16px',
           background: '#009EE3',
           color: 'white',
-          borderRadius: 14,
+          borderRadius: 12,
           fontSize: 16,
-          fontWeight: 800,
+          fontWeight: 700,
           border: 'none',
-          boxShadow: '0 4px 16px rgba(0,158,227,0.3)',
           marginBottom: 10,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
+          cursor: 'pointer',
         }}
       >
-        <span style={{ fontSize: 20 }}>💳</span>
+        <IconCreditCard size={18} color="white" />
         Pagar con MercadoPago
       </button>
 
@@ -699,14 +709,20 @@ function StepReview({ paymentItems, totalAmount, concept, onMercadoPago, onTrans
           width: '100%',
           padding: '15px',
           background: 'white',
-          color: '#212121',
-          borderRadius: 14,
+          color: '#374151',
+          borderRadius: 12,
           fontSize: 15,
-          fontWeight: 700,
-          border: '2px solid #DDDDDD',
+          fontWeight: 600,
+          border: '1px solid #E2E8F0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          cursor: 'pointer',
         }}
       >
-        🏦 Pagar por transferencia
+        <IconBanknote size={18} color="#374151" />
+        Pagar por transferencia
       </button>
     </div>
   );
@@ -725,12 +741,12 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
   const copyToClipboard = (text, label) => {
     if (navigator.clipboard) {
       navigator.clipboard.writeText(text).then(() => {
-        addToast(`¡Copiado! ${label}`, 'success');
+        addToast(`Copiado: ${label}`, 'success');
       }).catch(() => {
-        addToast(`¡Copiado! ${label}`, 'success');
+        addToast(`Copiado: ${label}`, 'success');
       });
     } else {
-      addToast(`¡Copiado! ${label}`, 'success');
+      addToast(`Copiado: ${label}`, 'success');
     }
   };
 
@@ -747,7 +763,7 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
       <div
         className="animate-slide-up"
         style={{
-          background: '#F5F5F0',
+          background: '#F8FAFC',
           borderRadius: '24px 24px 0 0',
           maxHeight: '90%',
           display: 'flex',
@@ -756,23 +772,23 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0 0' }}>
-          <div style={{ width: 40, height: 4, background: '#DDDDDD', borderRadius: 2 }} />
+          <div style={{ width: 40, height: 4, background: '#E2E8F0', borderRadius: 2 }} />
         </div>
         <div style={{
           display: 'flex',
           alignItems: 'center',
           gap: 10,
           padding: '12px 20px 16px',
-          borderBottom: '1px solid #EEEEEE',
+          borderBottom: '1px solid #E2E8F0',
         }}>
-          <button onClick={onBack} style={{ background: 'none', padding: 4 }}>
-            <IconArrowLeft size={20} color="#212121" />
+          <button onClick={onBack} style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer' }}>
+            <IconArrowLeft size={20} color="#111827" />
           </button>
           <div>
-            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#212121', margin: 0 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: 0 }}>
               Datos para transferencia
             </h3>
-            <p style={{ fontSize: 12, color: '#9E9E9E', margin: '2px 0 0', fontWeight: 500 }}>
+            <p style={{ fontSize: 12, color: '#9CA3AF', margin: '2px 0 0', fontWeight: 500 }}>
               Realizá la transferencia desde tu banco
             </p>
           </div>
@@ -781,7 +797,7 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
           <div style={{
             background: '#1B5E20',
-            borderRadius: 14,
+            borderRadius: 12,
             padding: '14px 16px',
             marginBottom: 16,
             display: 'flex',
@@ -789,7 +805,7 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
             alignItems: 'center',
           }}>
             <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: 600 }}>Total a transferir</span>
-            <span style={{ color: 'white', fontSize: 24, fontWeight: 900 }}>{formatCurrency(amount)}</span>
+            <span style={{ color: 'white', fontSize: 24, fontWeight: 700 }}>{formatCurrency(amount)}</span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -801,21 +817,20 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                border: '1px solid #EEEEEE',
+                border: '1px solid #E2E8F0',
               }}>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 11, color: '#9E9E9E', fontWeight: 600, margin: '0 0 3px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                  <p style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600, margin: '0 0 3px', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
                     {label}
                   </p>
-                  <p style={{ fontSize: 14, fontWeight: 700, color: '#212121', margin: 0, wordBreak: 'break-all' }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: '#111827', margin: 0, wordBreak: 'break-all' }}>
                     {value}
                   </p>
                 </div>
                 <button
                   onClick={() => copyToClipboard(value, label)}
-                  className="copy-btn"
                   style={{
-                    background: '#E8F5E9',
+                    background: '#F0FDF4',
                     border: 'none',
                     borderRadius: 8,
                     padding: '8px 10px',
@@ -825,12 +840,12 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
                     display: 'flex',
                     alignItems: 'center',
                     gap: 4,
-                    color: '#2E7D32',
+                    color: '#059669',
                     fontSize: 11,
-                    fontWeight: 700,
+                    fontWeight: 600,
                   }}
                 >
-                  <IconCopy size={14} color="#2E7D32" />
+                  <IconCopy size={14} color="#059669" />
                   Copiar
                 </button>
               </div>
@@ -838,34 +853,34 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
           </div>
 
           <div style={{
-            background: '#FFF8E1',
+            background: '#FFFBEB',
             borderRadius: 12,
             padding: '12px 14px',
             marginTop: 14,
-            border: '1px solid #FFD54F',
+            border: '1px solid #FDE68A',
           }}>
-            <p style={{ fontSize: 12, color: '#E65100', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
-              ⚠️ <strong>Importante:</strong> Incluí la referencia exacta en el concepto de la transferencia para que podamos identificar tu pago.
+            <p style={{ fontSize: 12, color: '#92400E', fontWeight: 600, margin: 0, lineHeight: 1.5 }}>
+              <strong>Importante:</strong> Incluí la referencia exacta en el concepto de la transferencia para que podamos identificar tu pago.
             </p>
           </div>
         </div>
 
-        <div style={{ padding: '16px 20px', background: '#F5F5F0', borderTop: '1px solid #EEEEEE' }}>
+        <div style={{ padding: '16px 20px', background: '#F8FAFC', borderTop: '1px solid #E2E8F0' }}>
           <button
             onClick={onConfirm}
             style={{
               width: '100%',
               padding: '16px',
-              background: 'linear-gradient(135deg, #2E7D32, #388E3C)',
+              background: '#1B5E20',
               color: 'white',
-              borderRadius: 14,
+              borderRadius: 12,
               fontSize: 16,
-              fontWeight: 800,
+              fontWeight: 600,
               border: 'none',
-              boxShadow: '0 4px 16px rgba(46,125,50,0.3)',
+              cursor: 'pointer',
             }}
           >
-            ✓ Ya realicé la transferencia
+            Ya realicé la transferencia
           </button>
         </div>
       </div>
@@ -873,13 +888,13 @@ function TransferDetails({ amount, reference, onConfirm, onBack, addToast }) {
   );
 }
 
-function Checkbox({ checked, color = '#2E7D32' }) {
+function Checkbox({ checked, color = '#1B5E20' }) {
   return (
     <div style={{
       width: 22,
       height: 22,
       borderRadius: 6,
-      border: `2px solid ${checked ? color : '#CCCCCC'}`,
+      border: `2px solid ${checked ? color : '#D1D5DB'}`,
       background: checked ? color : 'transparent',
       display: 'flex',
       alignItems: 'center',
@@ -898,10 +913,12 @@ function FullOverlay({ children, bg }) {
       position: 'fixed',
       inset: 0,
       zIndex: 800,
-      background: bg || 'linear-gradient(160deg, #1B5E20 0%, #2E7D32 100%)',
+      background: bg || 'linear-gradient(135deg, #1B5E20, #2E7D32)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      paddingTop: 'env(safe-area-inset-top)',
+      paddingBottom: 'env(safe-area-inset-bottom)',
       animation: 'fadeIn 0.3s ease',
     }}>
       {children}

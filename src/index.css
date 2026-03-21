@@ -196,3 +196,38 @@ a {
   background: rgba(46,125,50,0.1) !important;
 }
 
+/* ─── Safe areas (iPhone notch + home indicator) ─── */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ─── Smooth scrolling on iOS ─────────────────────── */
+.scroll-y {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+
+/* ─── Prevent iOS input zoom (font < 16px triggers it) */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ─── Minimum touch target helper ─────────────────── */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Notification panel slide-down ───────────────── */
+@keyframes slideNotif {
+  from { transform: translateY(-12px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
