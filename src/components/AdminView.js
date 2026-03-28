@@ -10,7 +10,7 @@ const MONTHS_SHORT = ['Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov
 const _adminNow = new Date();
 const CM = Math.max(0, Math.min(_adminNow.getMonth() - 1, MONTHS.length - 1));
 
-const NIVELES = ['Jardín', 'Primaria', 'Secundaria'];
+const NIVELES = ['Jardin', 'Primaria', 'Secundaria'];
 const BECAS = [0, 0.1, 0.25, 0.50, 0.75, 1];
 const METODOS = ['MercadoPago', 'Transferencia', 'Efectivo'];
 
@@ -247,7 +247,9 @@ export default function AdminView({
 
   const kpis = useMemo(() => {
     const recaudado = payments.filter(p => p.estado === 'verificado').reduce((s, p) => s + (p.monto || 0), 0);
-    const pendiente = payments.filter(p => p.estado === 'pendiente').reduce((s, p) => s + (p.monto || 0), 0);
+    const pendienteList = payments.filter(p => p.estado === 'pendiente');
+    const pendiente = pendienteList.reduce((s, p) => s + (p.monto || 0), 0);
+    const pendienteCount = pendienteList.length;
     const familiesWithDebt = new Set();
     let deudaTotal = 0;
     for (const st of allStudents) {
@@ -261,17 +263,75 @@ export default function AdminView({
       }
     }
     const totalFamilias = new Set(allStudents.map(s => s.familiaId).filter(Boolean)).size;
-    return { recaudado, pendiente, conDeuda: familiesWithDebt.size, totalFamilias, deudaTotal };
+    return { recaudado, pendiente, pendienteCount, conDeuda: familiesWithDebt.size, totalFamilias, deudaTotal };
   }, [payments, allStudents, gs, getCuota, dueMonths]);
 
   const monthlyRevenue = useMemo(() => {
+    const expectedPerMonth = allStudents.reduce((sum, st) => sum + getCuota(st), 0);
     return MONTHS.slice(0, CM + 1).map((mes, idx) => ({
       mes,
       short: MONTHS_SHORT[idx],
       verified: payments.filter(p => p.mes === mes && p.estado === 'verificado').reduce((s, p) => s + (p.monto || 0), 0),
       pending: payments.filter(p => p.mes === mes && p.estado === 'pendiente').reduce((s, p) => s + (p.monto || 0), 0),
+      expected: expectedPerMonth,
     }));
-  }, [payments]);
+  }, [payments, allStudents, getCuota]);
+
+  const totalExpectedPerMonth = useMemo(() =>
+    allStudents.reduce((sum, st) => sum + getCuota(st), 0),
+  [allStudents, getCuota]);
+
+  const tasaCobranza = useMemo(() => {
+    const totalExpected = totalExpectedPerMonth * dueMonths.length;
+    if (totalExpected === 0) return 0;
+    const totalVerified = payments
+      .filter(p => p.estado === 'verificado' && dueMonths.includes(p.mes))
+      .reduce((s, p) => s + (p.monto || 0), 0);
+    return Math.min(100, Math.round((totalVerified / totalExpected) * 100));
+  }, [payments, totalExpectedPerMonth, dueMonths]);
+
+  const familiasAlDia = useMemo(() => {
+    const familyMap = {};
+    for (const st of allStudents) {
+      if (getCuota(st) <= 0) continue;
+      const fid = st.familiaId || '__sin_familia__';
+      if (!familyMap[fid]) familyMap[fid] = [];
+      familyMap[fid].push(st);
+    }
+    let alDia = 0;
+    const total = Object.keys(familyMap).length;
+    for (const students of Object.values(familyMap)) {
+      let allPaid = true;
+      outer: for (const st of students) {
+        for (const mes of dueMonths) {
+          if (gs(st.legajo, mes) !== 'ok') { allPaid = false; break outer; }
+        }
+      }
+      if (allPaid) alDia++;
+    }
+    return { alDia, total };
+  }, [allStudents, gs, getCuota, dueMonths]);
+
+  const becasSummary = useMemo(() => {
+    let count = 0; let descuento = 0;
+    for (const st of allStudents) {
+      if ((st.beca || 0) > 0) {
+        count++;
+        descuento += (rates[st.nivel] || 0) * (st.beca || 0);
+      }
+    }
+    return { count, descuento };
+  }, [allStudents, rates]);
+
+  const financialSummary = useMemo(() => {
+    return NIVELES.map(nivel => {
+      const students = allStudents.filter(s => s.nivel === nivel);
+      const cuota = rates[nivel] || 0;
+      const esperado = students.length * cuota;
+      const becas = students.reduce((sum, st) => sum + cuota * (st.beca || 0), 0);
+      return { nivel, alumnos: students.length, cuota, esperado, becas, neto: esperado - becas };
+    });
+  }, [allStudents, rates]);
 
   const debtors = useMemo(() => {
     // Group by family; skip students with $0 fee (100% beca)
@@ -486,6 +546,11 @@ export default function AdminView({
             onOpenDebtors={() => setModal('debtors')}
             onOpenAddPayment={() => setModal('addPayment')}
             onNavigatePayments={() => setTab('pagos')}
+            tasaCobranza={tasaCobranza}
+            familiasAlDia={familiasAlDia}
+            becasSummary={becasSummary}
+            financialSummary={financialSummary}
+            onExport={() => showToast('Función disponible próximamente')}
           />
         )}
         {tab === 'pagos' && (
@@ -732,146 +797,382 @@ function AccumulatedDebtAlert({ families, onOpenDebtors }) {
   );
 }
 
+// ─── CircularProgress & MiniProgressBar ──────────────────────────────────────
+
+function CircularProgress({ pct, size = 56, strokeWidth = 6, color }) {
+  const r = (size - strokeWidth) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (Math.min(100, Math.max(0, pct)) / 100) * circ;
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#E2E8F0" strokeWidth={strokeWidth} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none" stroke={color} strokeWidth={strokeWidth}
+        strokeDasharray={circ} strokeDashoffset={offset}
+        strokeLinecap="round"
+        style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+      />
+    </svg>
+  );
+}
+
+function MiniProgressBar({ pct, color }) {
+  return (
+    <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden', marginTop: 6 }}>
+      <div style={{
+        height: '100%', width: `${Math.min(100, Math.max(0, pct))}%`,
+        background: color, borderRadius: 3, transition: 'width 0.4s ease',
+      }} />
+    </div>
+  );
+}
+
 // ─── DashboardTab ─────────────────────────────────────────────────────────────
 
-function DashboardTab({ kpis, monthlyRevenue, payments, getStudentName, allStudents, getCuota, accumulatedDebtFamilies, onOpenDebtors, onOpenAddPayment, onNavigatePayments }) {
-  const [expandedId, setExpandedId] = useState(null);
-  const recentPayments = sortPaymentsNewestFirst(payments).slice(0, 5);
+function DashboardTab({
+  kpis, monthlyRevenue, payments, getStudentName, allStudents, getCuota,
+  accumulatedDebtFamilies, onOpenDebtors, onOpenAddPayment, onNavigatePayments,
+  tasaCobranza, familiasAlDia, becasSummary, financialSummary, onExport,
+}) {
+  const [expandedMonth, setExpandedMonth] = useState(null);
 
-  const kpiData = [
-    { label: 'Recaudado', value: fmt(kpis.recaudado), color: T.greenText, bg: T.greenBg, border: '#D1FAE5' },
-    { label: 'Pendiente', value: fmt(kpis.pendiente), color: T.amberText, bg: T.amberBg, border: '#FDE68A' },
-    { label: 'Con deuda', value: kpis.conDeuda, color: T.redText, bg: T.redBg, border: '#FECACA', suffix: `/${kpis.totalFamilias} fam.` },
-    { label: 'Deuda total', value: fmt(kpis.deudaTotal), color: T.purpleText, bg: T.purpleBg, border: '#DDD6FE' },
-  ];
+  const dueMonthsLocal = MONTHS.slice(0, CM + 1);
+  const currentMonthData = monthlyRevenue.find(m => m.mes === MONTHS[CM]);
+  const curVerified = currentMonthData?.verified || 0;
+  const curExpected = currentMonthData?.expected || 0;
+  const curPct = curExpected > 0 ? Math.round((curVerified / curExpected) * 100) : 0;
+
+  const rateColor = (p) => p >= 80 ? T.greenText : p >= 60 ? T.amberText : T.redText;
+  const rateBg   = (p) => p >= 80 ? T.greenBg   : p >= 60 ? T.amberBg   : T.redBg;
+  const rateBorder = (p) => p >= 80 ? '#D1FAE5' : p >= 60 ? '#FDE68A' : '#FECACA';
+  const rateFill = (p) => p >= 80 ? T.greenLight : p >= 60 ? T.amber : T.red;
+  const barColor = (p) => p >= 80 ? T.greenLight : p >= 50 ? T.amber : T.red;
+
+  const getMonthBreakdown = (mes) => {
+    const familyMap = {};
+    for (const st of allStudents) {
+      if (getCuota(st) <= 0) continue;
+      const fid = st.familiaId || '__sin_familia__';
+      if (!familyMap[fid]) familyMap[fid] = [];
+      familyMap[fid].push(st);
+    }
+    let paid = 0, withPending = 0, unpaid = 0;
+    for (const students of Object.values(familyMap)) {
+      let hasVerified = false, hasPending = false, hasUnpaid = false;
+      for (const st of students) {
+        const p = payments.find(pay =>
+          Array.isArray(pay.studentIds) && pay.studentIds.includes(st.legajo) && pay.mes === mes
+        );
+        if (!p || p.estado === 'rechazado') hasUnpaid = true;
+        else if (p.estado === 'pendiente') hasPending = true;
+        else if (p.estado === 'verificado') hasVerified = true;
+      }
+      if (hasUnpaid) unpaid++;
+      else if (hasPending) withPending++;
+      else paid++;
+    }
+    return { paid, withPending, unpaid, total: paid + withPending + unpaid };
+  };
+
+  const activityItems = sortPaymentsNewestFirst(payments).slice(0, 10).map(p => {
+    const names = (p.studentIds || []).map(getStudentName);
+    const ref = famLabel(p.familiaId) || (names[0] || 'Pago');
+    return {
+      id: p.id,
+      type: p.estado === 'verificado' ? 'verified' : p.estado === 'rechazado' ? 'rejected' : 'received',
+      description: p.estado === 'verificado'
+        ? `Pago verificado · ${ref} — ${p.mes}`
+        : p.estado === 'rechazado'
+          ? `Pago rechazado · ${ref} — ${p.mes}`
+          : `${ref} pagó ${p.mes}`,
+      timestamp: p.fecha || '',
+      amount: p.monto,
+    };
+  });
+
+  const famAldiaPct = familiasAlDia.total > 0
+    ? Math.round((familiasAlDia.alDia / familiasAlDia.total) * 100) : 0;
+
+  const totalStudents = allStudents.length;
+  const nivelColors = { Jardin: '#60A5FA', Primaria: T.greenLight, Secundaria: T.amber };
 
   return (
-    <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* KPI 2×2 grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {kpiData.map(({ label, value, color, bg, border, suffix }) => (
-          <div key={label} style={{
-            background: bg, border: `1px solid ${border}`, borderRadius: 14, padding: '16px',
+    <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      {/* ── KPI A: Tasa de Cobranza (full width) ── */}
+      <div style={{
+        background: rateBg(tasaCobranza), border: `1px solid ${rateBorder(tasaCobranza)}`,
+        borderRadius: 14, padding: '14px 16px',
+        display: 'flex', alignItems: 'center', gap: 14,
+      }}>
+        <div style={{ position: 'relative', flexShrink: 0, width: 64, height: 64 }}>
+          <CircularProgress pct={tasaCobranza} size={64} strokeWidth={6} color={rateFill(tasaCobranza)} />
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 12, fontWeight: 700, color: rateColor(tasaCobranza),
           }}>
-            <div style={{ fontSize: 11, color, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              {label}
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700, color, lineHeight: 1.2, marginTop: 4 }}>
-              {value}{suffix || ''}
-            </div>
+            {tasaCobranza}%
           </div>
-        ))}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 10, color: rateColor(tasaCobranza), fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+            Tasa de Cobranza
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: rateColor(tasaCobranza), lineHeight: 1.2, marginTop: 2 }}>
+            {tasaCobranza}% cobrado
+          </div>
+          <div style={{ fontSize: 11, color: rateColor(tasaCobranza), opacity: 0.75, marginTop: 3 }}>
+            {dueMonthsLocal.length > 1 ? `${MONTHS_SHORT[0]}–${MONTHS_SHORT[dueMonthsLocal.length - 1]}` : MONTHS_SHORT[0]} · {dueMonthsLocal.length} {dueMonthsLocal.length === 1 ? 'mes' : 'meses'}
+          </div>
+        </div>
       </div>
 
-      {/* Accumulated debt alert */}
+      {/* ── KPI B + C ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {/* B: Recaudado este mes */}
+        <div style={{ background: T.greenBg, border: '1px solid #D1FAE5', borderRadius: 14, padding: '14px' }}>
+          <div style={{ fontSize: 10, color: T.greenText, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Recaudado</div>
+          <div style={{ fontSize: 10, color: T.greenText, opacity: 0.7, marginBottom: 4 }}>{MONTHS[CM]}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: T.greenText, lineHeight: 1.2 }}>{fmt(curVerified)}</div>
+          <div style={{ fontSize: 10, color: T.greenText, opacity: 0.7, marginTop: 2 }}>de {fmt(curExpected)}</div>
+          <MiniProgressBar pct={curPct} color={barColor(curPct)} />
+        </div>
+
+        {/* C: Pendiente de verificar */}
+        <button onClick={onNavigatePayments} style={{
+          background: T.amberBg, border: '1px solid #FDE68A', borderRadius: 14, padding: '14px',
+          textAlign: 'left', cursor: 'pointer', fontFamily: T.font,
+        }}>
+          <div style={{ fontSize: 10, color: T.amberText, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Por Verificar</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: T.amberText, lineHeight: 1.2, marginTop: 2 }}>{kpis.pendienteCount}</div>
+          <div style={{ fontSize: 10, color: T.amberText, marginTop: 2 }}>
+            {kpis.pendienteCount === 1 ? 'pago' : 'pagos'} · {fmt(kpis.pendiente)}
+          </div>
+        </button>
+      </div>
+
+      {/* ── KPI D + E ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        {/* D: Familias al día */}
+        <div style={{
+          background: rateBg(famAldiaPct), border: `1px solid ${rateBorder(famAldiaPct)}`,
+          borderRadius: 14, padding: '14px',
+        }}>
+          <div style={{ fontSize: 10, color: rateColor(famAldiaPct), fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Familias al Día</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: rateColor(famAldiaPct), lineHeight: 1.2, marginTop: 4 }}>
+            {familiasAlDia.alDia}/{familiasAlDia.total}
+          </div>
+          <div style={{ fontSize: 10, color: rateColor(famAldiaPct), opacity: 0.8, marginTop: 2 }}>{famAldiaPct}% al día</div>
+        </div>
+
+        {/* E: Morosos */}
+        <button onClick={onOpenDebtors} style={{
+          background: T.redBg, border: '1px solid #FECACA', borderRadius: 14, padding: '14px',
+          textAlign: 'left', cursor: 'pointer', fontFamily: T.font,
+        }}>
+          <div style={{ fontSize: 10, color: T.redText, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Morosos</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: T.red, lineHeight: 1.2, marginTop: 2 }}>{accumulatedDebtFamilies.length}</div>
+          <div style={{ fontSize: 10, color: T.redText, marginTop: 2 }}>
+            {accumulatedDebtFamilies.length === 1 ? 'familia' : 'familias'} · 2+ meses
+          </div>
+        </button>
+      </div>
+
+      {/* ── KPI F: Becas (full width) ── */}
+      <div style={{
+        background: T.purpleBg, border: '1px solid #DDD6FE', borderRadius: 14, padding: '14px 16px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      }}>
+        <div>
+          <div style={{ fontSize: 10, color: T.purpleText, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Becas Otorgadas</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: T.purpleText, lineHeight: 1.2, marginTop: 4 }}>{becasSummary.count} alumnos</div>
+          <div style={{ fontSize: 11, color: T.purpleText, opacity: 0.8, marginTop: 2 }}>{fmt(becasSummary.descuento)}/mes en descuentos</div>
+        </div>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={T.purple} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.4 }}>
+          <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
+        </svg>
+      </div>
+
+      {/* ── Accumulated Debt Alert ── */}
       <AccumulatedDebtAlert families={accumulatedDebtFamilies} onOpenDebtors={onOpenDebtors} />
 
-      {/* Monthly revenue */}
-      <Card style={{ padding: '16px 16px' }}>
-        <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 12 }}>Recaudación mensual</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {monthlyRevenue.map(({ mes, short, verified, pending }) => (
-            <div key={mes}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: T.textMid }}>{mes}</span>
-                <div style={{ display: 'flex', gap: 12 }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: T.greenText }}>{fmt(verified)}</span>
-                  {pending > 0 && <span style={{ fontSize: 12, color: T.amberText }}>+{fmt(pending)} pend.</span>}
-                </div>
+      {/* ── Monthly Revenue (enhanced) ── */}
+      <Card style={{ padding: '16px' }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 12 }}>Recaudación por mes</div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {monthlyRevenue.map(({ mes, verified, pending, expected }) => {
+            const pct = expected > 0 ? Math.round((verified / expected) * 100) : 0;
+            const isExpanded = expandedMonth === mes;
+            const breakdown = isExpanded ? getMonthBreakdown(mes) : null;
+            return (
+              <div key={mes} style={{ borderBottom: `1px solid ${T.border}` }}>
+                <button
+                  onClick={() => setExpandedMonth(isExpanded ? null : mes)}
+                  style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: T.font, padding: '12px 0' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: T.textMid }}>{mes}</span>
+                      <span style={{ fontSize: 11, color: barColor(pct), fontWeight: 700, marginLeft: 8 }}>{pct}% cobrado</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: T.greenText }}>{fmt(verified)}</div>
+                        <div style={{ fontSize: 10, color: T.textLight }}>/ {fmt(expected)}</div>
+                      </div>
+                      <span style={{ color: T.textLight, fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span>
+                    </div>
+                  </div>
+                  <div style={{ height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.min(100, pct)}%`, background: barColor(pct), borderRadius: 3, transition: 'width 0.4s ease' }} />
+                  </div>
+                  {pending > 0 && (
+                    <div style={{ fontSize: 10, color: T.amberText, marginTop: 4 }}>+{fmt(pending)} por verificar</div>
+                  )}
+                </button>
+                {isExpanded && breakdown && (
+                  <div style={{ padding: '8px 0 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: 20, background: T.greenBg, color: T.greenText, fontSize: 11, fontWeight: 700 }}>
+                        {breakdown.paid} pagaron
+                      </span>
+                      {breakdown.withPending > 0 && (
+                        <span style={{ padding: '3px 10px', borderRadius: 20, background: T.amberBg, color: T.amberText, fontSize: 11, fontWeight: 700 }}>
+                          {breakdown.withPending} pendientes
+                        </span>
+                      )}
+                      <span style={{ padding: '3px 10px', borderRadius: 20, background: T.redBg, color: T.redText, fontSize: 11, fontWeight: 700 }}>
+                        {breakdown.unpaid} sin pagar
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textLight }}>{breakdown.total} {breakdown.total === 1 ? 'familia' : 'familias'} en total</div>
+                  </div>
+                )}
               </div>
-              <div style={{ height: 6, background: T.grayBg, borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 3,
-                  background: `linear-gradient(90deg, ${T.greenLight}, ${T.green})`,
-                  width: verified > 0 ? `${Math.min(100, (verified / (verified + pending + 1)) * 100)}%` : '0%',
-                  transition: 'width 0.4s ease',
-                }} />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
 
-      {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 10 }}>
-        <PrimaryBtn onClick={onOpenAddPayment} style={{ flex: 1, textAlign: 'center' }}>
-          + Registrar pago
-        </PrimaryBtn>
-        <PrimaryBtn
-          onClick={onOpenDebtors}
-          style={{ flex: 1, textAlign: 'center', background: T.red }}
-          danger
-        >
-          Deudores
-        </PrimaryBtn>
-      </div>
+      {/* ── Financial Summary Table ── */}
+      <Card style={{ padding: '16px' }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 12 }}>Resumen Financiero</div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${T.border}` }}>
+                <th style={{ padding: '6px 6px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: T.textLight, textTransform: 'uppercase' }}>Nivel</th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: T.textLight, textTransform: 'uppercase' }}>Alumnos</th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: T.textLight, textTransform: 'uppercase' }}>Cuota</th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: T.textLight, textTransform: 'uppercase' }}>Esperado</th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: T.textLight, textTransform: 'uppercase' }}>Becas</th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontSize: 10, fontWeight: 700, color: T.textLight, textTransform: 'uppercase' }}>Neto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {financialSummary.map(({ nivel, alumnos, cuota, esperado, becas, neto }, i) => (
+                <tr key={nivel} style={{ borderBottom: `1px solid ${T.border}`, background: i % 2 !== 0 ? T.bg : 'transparent' }}>
+                  <td style={{ padding: '8px 6px', fontWeight: 600, color: T.text }}>{nivel}</td>
+                  <td style={{ padding: '8px 6px', textAlign: 'right', color: T.textMid }}>{alumnos}</td>
+                  <td style={{ padding: '8px 6px', textAlign: 'right', color: T.textMid }}>{fmt(cuota)}</td>
+                  <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 600, color: T.text }}>{fmt(esperado)}</td>
+                  <td style={{ padding: '8px 6px', textAlign: 'right', color: T.redText }}>-{fmt(becas)}</td>
+                  <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: T.greenText }}>{fmt(neto)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: `2px solid ${T.border}`, background: T.greenBg }}>
+                <td style={{ padding: '8px 6px', fontWeight: 700, color: T.greenText }}>TOTAL</td>
+                <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: T.greenText }}>{financialSummary.reduce((s, r) => s + r.alumnos, 0)}</td>
+                <td style={{ padding: '8px 6px' }} />
+                <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: T.greenText }}>{fmt(financialSummary.reduce((s, r) => s + r.esperado, 0))}</td>
+                <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: T.redText }}>-{fmt(financialSummary.reduce((s, r) => s + r.becas, 0))}</td>
+                <td style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 700, color: T.greenText }}>{fmt(financialSummary.reduce((s, r) => s + r.neto, 0))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </Card>
 
-      {/* Recent payments */}
+      {/* ── Nivel Distribution ── */}
+      <Card style={{ padding: '16px' }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 12 }}>Distribución por Nivel</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {NIVELES.map(nivel => {
+            const count = allStudents.filter(s => s.nivel === nivel).length;
+            const pct = totalStudents > 0 ? Math.round((count / totalStudents) * 100) : 0;
+            const color = nivelColors[nivel] || T.gray;
+            return (
+              <div key={nivel}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: T.textMid }}>{nivel}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.textMid }}>{count} · {pct}%</span>
+                </div>
+                <div style={{ height: 8, background: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 4, transition: 'width 0.4s ease' }} />
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 11, color: T.textLight, textAlign: 'right', marginTop: 2 }}>{totalStudents} alumnos en total</div>
+        </div>
+      </Card>
+
+      {/* ── Quick Actions ── */}
+      <Card style={{ padding: '16px' }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: T.text, marginBottom: 12 }}>Acciones Rápidas</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <button onClick={onNavigatePayments} style={{ background: T.amberBg, border: '1px solid #FDE68A', borderRadius: 12, padding: '12px 8px', textAlign: 'center', cursor: 'pointer', fontFamily: T.font, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={T.amber} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 11 12 14 22 4" /><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" /></svg>
+            <span style={{ fontSize: 11, fontWeight: 600, color: T.amberText, lineHeight: 1.3 }}>Verificar pendientes</span>
+            {kpis.pendienteCount > 0 && <span style={{ background: T.amber, color: 'white', borderRadius: 20, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{kpis.pendienteCount}</span>}
+          </button>
+          <button onClick={onOpenDebtors} style={{ background: T.redBg, border: '1px solid #FECACA', borderRadius: 12, padding: '12px 8px', textAlign: 'center', cursor: 'pointer', fontFamily: T.font, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={T.red} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+            <span style={{ fontSize: 11, fontWeight: 600, color: T.redText, lineHeight: 1.3 }}>Ver deudores</span>
+            {accumulatedDebtFamilies.length > 0 && <span style={{ background: T.red, color: 'white', borderRadius: 20, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>{accumulatedDebtFamilies.length}</span>}
+          </button>
+          <button onClick={onExport} style={{ background: T.grayBg, border: `1px solid ${T.border}`, borderRadius: 12, padding: '12px 8px', textAlign: 'center', cursor: 'pointer', fontFamily: T.font, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={T.gray} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+            <span style={{ fontSize: 11, fontWeight: 600, color: T.grayText, lineHeight: 1.3 }}>Exportar listado</span>
+          </button>
+          <button onClick={onOpenAddPayment} style={{ background: T.greenBg, border: '1px solid #D1FAE5', borderRadius: 12, padding: '12px 8px', textAlign: 'center', cursor: 'pointer', fontFamily: T.font, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={T.green} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+            <span style={{ fontSize: 11, fontWeight: 600, color: T.greenText, lineHeight: 1.3 }}>Registrar pago</span>
+          </button>
+        </div>
+      </Card>
+
+      {/* ── Activity Feed ── */}
       <Card>
-        <div style={{
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          padding: '12px 14px', borderBottom: `1px solid ${T.border}`,
-        }}>
-          <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>Últimos pagos</span>
-          <button
-            onClick={onNavigatePayments}
-            style={{ background: 'none', border: 'none', color: T.green, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}
-          >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', borderBottom: `1px solid ${T.border}` }}>
+          <span style={{ fontWeight: 700, fontSize: 14, color: T.text }}>Actividad reciente</span>
+          <button onClick={onNavigatePayments} style={{ background: 'none', border: 'none', color: T.green, fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: T.font }}>
             Ver todos →
           </button>
         </div>
-        {recentPayments.length === 0 ? (
-          <div style={{ padding: 20, textAlign: 'center', color: T.textLight, fontSize: 14 }}>Sin pagos registrados</div>
+        {activityItems.length === 0 ? (
+          <div style={{ padding: 20, textAlign: 'center', color: T.textLight, fontSize: 14 }}>Sin actividad registrada</div>
         ) : (
-          recentPayments.map((p, i) => {
-            const names = (p.studentIds || []).map(getStudentName);
-            const isExpanded = expandedId === (p.id || i);
+          activityItems.map((item, i) => {
+            const leftColor = item.type === 'rejected' ? T.red : item.type === 'verified' ? T.greenLight : T.amber;
             return (
-              <div key={p.id || i} style={{
-                borderBottom: i < recentPayments.length - 1 ? `1px solid ${T.border}` : 'none',
+              <div key={item.id || i} style={{
+                borderLeft: `3px solid ${leftColor}`, margin: '0 14px',
+                padding: '10px 0 10px 12px',
+                borderBottom: i < activityItems.length - 1 ? `1px solid ${T.border}` : 'none',
+                display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
               }}>
-                <button
-                  onClick={() => setExpandedId(prev => prev === (p.id || i) ? null : (p.id || i))}
-                  style={{
-                    width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px',
-                    background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', fontFamily: T.font,
-                  }}
-                >
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                    background: p.metodo === 'MercadoPago' ? '#EFF6FF' : p.metodo === 'Efectivo' ? T.greenBg : T.grayBg,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    {p.metodo === 'MercadoPago'
-                      ? <IconCreditCard size={16} color="#2563EB" />
-                      : p.metodo === 'Efectivo'
-                        ? <IconDollarSign size={16} color={T.green} />
-                        : <IconBanknote size={16} color={T.gray} />
-                    }
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {item.description}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {names.slice(0, 2).join(', ')}{names.length > 2 ? ` +${names.length - 2}` : ''} — {p.mes}
-                    </div>
-                    <div style={{ fontSize: 11, color: T.textLight }}>
-                      {p.fecha || 'Sin fecha'}
-                      {p.familiaId && ` · ${famLabel(p.familiaId)}`}
-                      {(p.studentIds || []).length > 0 && ` · Leg. ${(p.studentIds || []).join(', ')}`}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: T.text }}>{fmt(p.monto)}</div>
-                    <StatusBadge estado={p.estado} />
-                  </div>
-                  <span style={{ color: T.textLight, fontSize: 11, flexShrink: 0, marginLeft: 4 }}>{isExpanded ? '▲' : '▼'}</span>
-                </button>
-                {isExpanded && (
-                  <PaymentExpandedDetail
-                    p={p}
-                    allStudents={allStudents}
-                    getCuota={getCuota}
-                    onUpdatePayment={null}
-                  />
+                  {item.timestamp && <div style={{ fontSize: 10, color: T.textLight, marginTop: 2 }}>{item.timestamp}</div>}
+                </div>
+                {item.amount > 0 && (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: T.text, flexShrink: 0 }}>{fmt(item.amount)}</span>
                 )}
               </div>
             );
@@ -1598,15 +1899,16 @@ function ConfigTab({ rates, allStudents, getCuota, onUpdateRate }) {
 
   return (
     <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Rate editor */}
+      {/* Rate editor with preview */}
       <Card style={{ padding: '16px' }}>
         <div style={{ fontWeight: 700, fontSize: 15, color: T.text, marginBottom: 14 }}>Cuotas por nivel</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {NIVELES.map(nivel => (
             <RateInput
-              key={nivel}
+              key={`${nivel}-${rates[nivel]}`}
               nivel={nivel}
-              defaultValue={rates[nivel] || ''}
+              currentRate={rates[nivel] || 0}
+              allStudents={allStudents}
               onSave={(val) => onUpdateRate(nivel, val)}
             />
           ))}
@@ -1628,7 +1930,7 @@ function ConfigTab({ rates, allStudents, getCuota, onUpdateRate }) {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: T.text }}>{fmt(monthly)}/mes</div>
-                <div style={{ fontSize: 11, color: T.textLight }}>teórico</div>
+                <div style={{ fontSize: 11, color: T.textLight }}>neto (con becas)</div>
               </div>
             </div>
           ))}
@@ -1637,15 +1939,12 @@ function ConfigTab({ rates, allStudents, getCuota, onUpdateRate }) {
 
       {/* Total revenue */}
       <div style={{
-        background: '#1B5E20',
-        borderRadius: 12, padding: '16px',
+        background: '#1B5E20', borderRadius: 12, padding: '16px',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
       }}>
         <div>
           <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: 600 }}>INGRESO REAL MENSUAL</div>
-          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>
-            después de descuentos por becas
-          </div>
+          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, marginTop: 2 }}>después de descuentos por becas</div>
         </div>
         <div style={{ color: 'white', fontSize: 24, fontWeight: 700 }}>{fmt(totalReal)}</div>
       </div>
@@ -1653,31 +1952,92 @@ function ConfigTab({ rates, allStudents, getCuota, onUpdateRate }) {
   );
 }
 
-// Rate input uses defaultValue + onBlur to avoid re-render focus loss
-function RateInput({ nivel, defaultValue, onSave }) {
+// RateInput: defaultValue + onBlur to avoid focus loss; shows impact preview before saving
+function RateInput({ nivel, currentRate, allStudents, onSave }) {
+  const inputRef = useRef(null);
+  const [pendingValue, setPendingValue] = useState(null);
+
+  const students = allStudents.filter(s => s.nivel === nivel);
+  const count = students.length;
+
+  const currentNet = students.reduce((sum, st) => sum + currentRate * (1 - (st.beca || 0)), 0);
+  const newNet = pendingValue != null
+    ? students.reduce((sum, st) => sum + pendingValue * (1 - (st.beca || 0)), 0)
+    : currentNet;
+  const diff = newNet - currentNet;
+
+  const handleBlur = (e) => {
+    e.target.style.borderColor = T.border;
+    const val = Number(e.target.value);
+    if (val > 0 && val !== currentRate) {
+      setPendingValue(val);
+    } else {
+      setPendingValue(null);
+    }
+  };
+
+  const handleConfirm = () => {
+    onSave(pendingValue);
+    setPendingValue(null);
+  };
+
+  const handleCancel = () => {
+    setPendingValue(null);
+    if (inputRef.current) inputRef.current.value = currentRate;
+  };
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-      <label style={{ fontWeight: 600, fontSize: 14, color: T.text, minWidth: 90 }}>{nivel}</label>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ fontSize: 14, color: T.textMid }}>$</span>
-        <input
-          key={`rate-${nivel}-${defaultValue}`}
-          type="number"
-          defaultValue={defaultValue}
-          onBlur={(e) => {
-            const val = Number(e.target.value);
-            if (val > 0) onSave(val);
-          }}
-          style={{
-            width: 120, padding: '8px 10px', borderRadius: 8,
-            border: `1.5px solid ${T.border}`, fontSize: 14,
-            fontFamily: T.font, color: T.text, textAlign: 'right',
-            outline: 'none',
-          }}
-          onFocus={e => e.target.style.borderColor = T.green}
-          onBlurCapture={e => e.target.style.borderColor = T.border}
-        />
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <label style={{ fontWeight: 600, fontSize: 14, color: T.text }}>{nivel}</label>
+          <div style={{ fontSize: 11, color: T.textLight, marginTop: 1 }}>{count} alumnos</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span style={{ fontSize: 14, color: T.textMid }}>$</span>
+          <input
+            ref={inputRef}
+            type="number"
+            defaultValue={currentRate}
+            onBlur={handleBlur}
+            onFocus={e => e.target.style.borderColor = T.green}
+            style={{
+              width: 120, padding: '8px 10px', borderRadius: 8,
+              border: `1.5px solid ${T.border}`, fontSize: 14,
+              fontFamily: T.font, color: T.text, textAlign: 'right', outline: 'none',
+            }}
+          />
+        </div>
       </div>
+
+      {pendingValue != null && (
+        <div style={{ marginTop: 10, background: T.amberBg, border: '1px solid #FDE68A', borderRadius: 10, padding: '12px' }}>
+          <div style={{ fontSize: 12, color: T.amberText, fontWeight: 700, marginBottom: 8 }}>Vista previa del cambio</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+            {[
+              ['Alumnos afectados', `${count} alumnos de ${nivel}`],
+              ['Cuota anterior', fmt(currentRate)],
+              ['Cuota nueva', fmt(pendingValue)],
+              ['Neto mensual nuevo', fmt(newNet)],
+            ].map(([label, value]) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                <span style={{ color: T.textMid }}>{label}:</span>
+                <span style={{ fontWeight: 600, color: T.text }}>{value}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+              <span style={{ color: T.textMid }}>Diferencia:</span>
+              <span style={{ fontWeight: 700, color: diff >= 0 ? T.greenText : T.redText }}>
+                {diff >= 0 ? '+' : ''}{fmt(diff)}/mes
+              </span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <GhostBtn onClick={handleCancel} style={{ flex: 1, fontSize: 12, padding: '7px 12px' }}>Cancelar</GhostBtn>
+            <PrimaryBtn onClick={handleConfirm} style={{ flex: 2, fontSize: 12, padding: '7px 12px' }}>Confirmar cambio</PrimaryBtn>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
