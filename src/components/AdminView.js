@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, memo } from 'react';
 import { sortPaymentsNewestFirst } from '../utils';
 import { IconBarChart, IconCreditCard, IconUsers, IconSettings, IconBanknote, IconDollarSign, IconSearch, IconCheckCircle, IconAlertCircle } from '../icons';
 
@@ -201,6 +201,7 @@ export default function AdminView({
   onAddPayment,
   onUpdateRate,
   onUpdateStudent,
+  onRefresh,
 }) {
   const [tab, setTab] = useState('dashboard');
   const [toast, setToast] = useState(null);
@@ -208,10 +209,24 @@ export default function AdminView({
   const [editingStudent, setEditingStudent] = useState(null);
   const [expandedPaymentId, setExpandedPaymentId] = useState(null);
   const [expandedStudentLegajo, setExpandedStudentLegajo] = useState(null);
+  const [paymentSearchInput, setPaymentSearchInput] = useState('');
   const [paymentSearch, setPaymentSearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('todos');
+  const [studentSearchInput, setStudentSearchInput] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [bulkConfirm, setBulkConfirm] = useState(null); // null | { type: 'verify'|'reopen', count, payments }
+
+  // ── Debounce search inputs ──
+
+  useEffect(() => {
+    const t = setTimeout(() => setPaymentSearch(paymentSearchInput), 300);
+    return () => clearTimeout(t);
+  }, [paymentSearchInput]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setStudentSearch(studentSearchInput), 300);
+    return () => clearTimeout(t);
+  }, [studentSearchInput]);
 
   // ── Helpers ──
 
@@ -524,11 +539,30 @@ export default function AdminView({
             </div>
           </div>
         </div>
-        <div style={{
-          background: 'rgba(255,255,255,0.2)', borderRadius: 8,
-          padding: '5px 10px', color: 'white', fontSize: 12, fontWeight: 600,
-        }}>
-          Admin
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              title="Actualizar datos"
+              style={{
+                background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8,
+                padding: '5px 10px', color: 'white', cursor: 'pointer', fontSize: 13,
+                fontFamily: T.font, display: 'flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+              Actualizar
+            </button>
+          )}
+          <div style={{
+            background: 'rgba(255,255,255,0.2)', borderRadius: 8,
+            padding: '5px 10px', color: 'white', fontSize: 12, fontWeight: 600,
+          }}>
+            Admin
+          </div>
         </div>
       </div>
 
@@ -557,13 +591,13 @@ export default function AdminView({
           <PagosTab
             filteredPayments={filteredPayments}
             allPayments={payments}
-            search={paymentSearch}
+            search={paymentSearchInput}
             filter={paymentFilter}
             expandedId={expandedPaymentId}
             getStudentName={getStudentName}
             allStudents={allStudents}
             getCuota={getCuota}
-            onSearch={setPaymentSearch}
+            onSearch={setPaymentSearchInput}
             onFilter={setPaymentFilter}
             onToggleExpand={(id) => setExpandedPaymentId(prev => prev === id ? null : id)}
             onUpdatePayment={handleUpdatePayment}
@@ -574,12 +608,12 @@ export default function AdminView({
         {tab === 'alumnos' && (
           <AlumnosTab
             students={filteredStudents}
-            search={studentSearch}
+            search={studentSearchInput}
             payments={payments}
             gs={gs}
             getCuota={getCuota}
             getStudentName={getStudentName}
-            onSearch={setStudentSearch}
+            onSearch={setStudentSearchInput}
             onEdit={(student) => { setEditingStudent(student); setModal('editStudent'); }}
           />
         )}
@@ -1186,6 +1220,14 @@ function DashboardTab({
 // ─── PagosTab ─────────────────────────────────────────────────────────────────
 
 function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, getStudentName, allStudents, getCuota, onSearch, onFilter, onToggleExpand, onUpdatePayment, onOpenAdd, onBulkAction }) {
+  const [visibleCount, setVisibleCount] = useState(20);
+
+  // Reset pagination when search or filter changes
+  useEffect(() => { setVisibleCount(20); }, [search, filter]);
+
+  const displayedPayments = filteredPayments.slice(0, visibleCount);
+  const remaining = filteredPayments.length - visibleCount;
+
   const counts = {
     todos: allPayments.length,
     verificado: allPayments.filter(p => p.estado === 'verificado').length,
@@ -1288,18 +1330,33 @@ function PagosTab({ filteredPayments, allPayments, search, filter, expandedId, g
         {filteredPayments.length === 0 ? (
           <EmptyState icon={<IconSearch size={32} color={T.textLight} />} text="No se encontraron pagos con estos filtros" />
         ) : (
-          filteredPayments.map((p, i) => (
-            <PaymentRow
-              key={p.id || i}
-              payment={p}
-              expanded={expandedId === p.id}
-              getStudentName={getStudentName}
-              allStudents={allStudents}
-              getCuota={getCuota}
-              onToggle={() => onToggleExpand(p.id)}
-              onUpdatePayment={onUpdatePayment}
-            />
-          ))
+          <>
+            {displayedPayments.map((p, i) => (
+              <PaymentRow
+                key={p.id || i}
+                payment={p}
+                expanded={expandedId === p.id}
+                getStudentName={getStudentName}
+                allStudents={allStudents}
+                getCuota={getCuota}
+                onToggle={() => onToggleExpand(p.id)}
+                onUpdatePayment={onUpdatePayment}
+              />
+            ))}
+            {remaining > 0 && (
+              <button
+                onClick={() => setVisibleCount(v => v + 20)}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: 10,
+                  border: `1.5px solid ${T.border}`, background: T.white,
+                  color: T.textMid, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', fontFamily: T.font, marginTop: 4,
+                }}
+              >
+                Cargar más ({remaining} restantes)
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1421,7 +1478,7 @@ function PaymentExpandedDetail({ p, allStudents, getCuota, onUpdatePayment }) {
   );
 }
 
-function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuota, onToggle, onUpdatePayment }) {
+const PaymentRow = memo(function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuota, onToggle, onUpdatePayment }) {
   const namesWithLegs = (p.studentIds || []).map(id => {
     const st = allStudents.find(s => s.legajo === id);
     return st ? `${st.nombre} ${st.apellido} (${id})` : `Leg. ${id}`;
@@ -1474,12 +1531,16 @@ function PaymentRow({ payment: p, expanded, getStudentName, allStudents, getCuot
       )}
     </Card>
   );
-}
+});
 
 // ─── AlumnosTab ───────────────────────────────────────────────────────────────
 
 function AlumnosTab({ students, search, payments, gs, getCuota, getStudentName, onSearch, onEdit }) {
   const [expandedFamiliaId, setExpandedFamiliaId] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(15);
+
+  // Reset pagination when search changes
+  useEffect(() => { setVisibleCount(15); }, [search]);
 
   const families = useMemo(() => {
     const familyMap = {};
@@ -1499,6 +1560,9 @@ function AlumnosTab({ students, search, payments, gs, getCuota, getStudentName, 
     }
     return Object.values(familyMap).sort((a, b) => a.apellido.localeCompare(b.apellido, 'es'));
   }, [students]);
+
+  const displayedFamilies = families.slice(0, visibleCount);
+  const remaining = families.length - visibleCount;
 
   return (
     <div>
@@ -1521,25 +1585,40 @@ function AlumnosTab({ students, search, payments, gs, getCuota, getStudentName, 
             text={search ? `No se encontraron resultados para "${search}"` : 'No se encontraron alumnos'}
           />
         ) : (
-          families.map(family => (
-            <FamilyCard
-              key={family.familiaId}
-              family={family}
-              expanded={expandedFamiliaId === family.familiaId}
-              payments={payments}
-              gs={gs} 
-              getCuota={getCuota}
-              onToggle={() => setExpandedFamiliaId(prev => prev === family.familiaId ? null : family.familiaId)}
-              onEdit={onEdit}
-            />
-          ))
+          <>
+            {displayedFamilies.map(family => (
+              <FamilyCard
+                key={family.familiaId}
+                family={family}
+                expanded={expandedFamiliaId === family.familiaId}
+                payments={payments}
+                gs={gs}
+                getCuota={getCuota}
+                onToggle={() => setExpandedFamiliaId(prev => prev === family.familiaId ? null : family.familiaId)}
+                onEdit={onEdit}
+              />
+            ))}
+            {remaining > 0 && (
+              <button
+                onClick={() => setVisibleCount(v => v + 15)}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: 10,
+                  border: `1.5px solid ${T.border}`, background: T.white,
+                  color: T.textMid, fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', fontFamily: T.font, marginTop: 4,
+                }}
+              >
+                Cargar más ({remaining} familias restantes)
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit }) {
+const FamilyCard = memo(function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit }) {
   const dueMonths = MONTHS.slice(0, CM + 1);
   const AVATAR_COLORS = ['#43A047', '#7B1FA2', '#1565C0', '#E65100', '#00838F', '#AD1457'];
   const accentColor = getFamilyColor(family.familiaId);
@@ -1742,9 +1821,9 @@ function FamilyCard({ family, expanded, payments, gs, getCuota, onToggle, onEdit
       )}
     </Card>
   );
-}
+});
 
-function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName, onToggle, onEdit }) {
+const StudentRow = memo(function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName, onToggle, onEdit }) {
   const dueMonths = MONTHS.slice(0, CM + 1);
   const cuota = getCuota(student);
   const owedMonths = dueMonths.filter(mes => gs(student.legajo, mes) === 'no');
@@ -1880,7 +1959,7 @@ function StudentRow({ student, expanded, payments, gs, getCuota, getStudentName,
       )}
     </Card>
   );
-}
+});
 
 // ─── ConfigTab ────────────────────────────────────────────────────────────────
 

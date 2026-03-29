@@ -105,12 +105,25 @@ export default function App() {
 
         if (isAdmin) {
           setAdminRates(ratesData);
-          const [stuSnap, paySnap] = await Promise.all([
-            getDocs(collection(db, 'students')),
-            getDocs(collection(db, 'payments')),
-          ]);
-          setAdminStudents(stuSnap.docs.map(d => d.data()));
-          setAdminPayments(sortPaymentsNewestFirst(paySnap.docs.map(d => ({ id: d.id, ...d.data() }))));
+          const cachedStudents = sessionStorage.getItem('adminStudents');
+          const cachedPayments = sessionStorage.getItem('adminPayments');
+          if (cachedStudents && cachedPayments) {
+            setAdminStudents(JSON.parse(cachedStudents));
+            setAdminPayments(JSON.parse(cachedPayments));
+          } else {
+            const [stuSnap, paySnap] = await Promise.all([
+              getDocs(collection(db, 'students')),
+              getDocs(collection(db, 'payments')),
+            ]);
+            const students = stuSnap.docs.map(d => d.data());
+            const payments = sortPaymentsNewestFirst(paySnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            setAdminStudents(students);
+            setAdminPayments(payments);
+            try {
+              sessionStorage.setItem('adminStudents', JSON.stringify(students));
+              sessionStorage.setItem('adminPayments', JSON.stringify(payments));
+            } catch (_) { /* quota exceeded — skip cache */ }
+          }
         } else {
           const famQuery = query(collection(db, 'Familias'), where('authUid', '==', firebaseUser.uid));
           const famSnap = await getDocs(famQuery);
@@ -177,13 +190,21 @@ export default function App() {
   // ── Admin Firestore handlers ────────────────────────────────────────────────
   const handleAdminUpdatePayment = useCallback(async (paymentId, newStatus) => {
     await updateDoc(doc(db, 'payments', paymentId), { estado: newStatus });
-    setAdminPayments(prev => prev.map(p => p.id === paymentId ? { ...p, estado: newStatus } : p));
+    setAdminPayments(prev => {
+      const updated = prev.map(p => p.id === paymentId ? { ...p, estado: newStatus } : p);
+      try { sessionStorage.setItem('adminPayments', JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
   }, []);
 
   const handleAdminAddPayment = useCallback(async (data) => {
     const dataWithTs = { ...data, createdAt: Date.now() };
     const ref = await addDoc(collection(db, 'payments'), dataWithTs);
-    setAdminPayments(prev => [{ id: ref.id, ...dataWithTs }, ...prev]);
+    setAdminPayments(prev => {
+      const updated = [{ id: ref.id, ...dataWithTs }, ...prev];
+      try { sessionStorage.setItem('adminPayments', JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
   }, []);
 
   const handleAdminUpdateRate = useCallback(async (nivel, value) => {
@@ -193,7 +214,17 @@ export default function App() {
 
   const handleAdminUpdateStudent = useCallback(async (studentData) => {
     await setDoc(doc(db, 'students', String(studentData.legajo)), studentData);
-    setAdminStudents(prev => prev.map(s => s.legajo === studentData.legajo ? { ...s, ...studentData } : s));
+    setAdminStudents(prev => {
+      const updated = prev.map(s => s.legajo === studentData.legajo ? { ...s, ...studentData } : s);
+      try { sessionStorage.setItem('adminStudents', JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
+  }, []);
+
+  const handleAdminRefresh = useCallback(() => {
+    sessionStorage.removeItem('adminStudents');
+    sessionStorage.removeItem('adminPayments');
+    window.location.reload();
   }, []);
 
   // ── Family payment handler ──────────────────────────────────────────────────
@@ -246,6 +277,7 @@ export default function App() {
           onAddPayment={handleAdminAddPayment}
           onUpdateRate={handleAdminUpdateRate}
           onUpdateStudent={handleAdminUpdateStudent}
+          onRefresh={handleAdminRefresh}
         />
       </div>
     );
