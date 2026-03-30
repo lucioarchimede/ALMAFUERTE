@@ -235,16 +235,27 @@ export default function AdminView({
     return rate * (1 - (student.beca || 0));
   }, [rates]);
 
+  // O(1) payment lookup map: key = `${legajo}-${mes}`, value = 'ok'|'pen'|'no'
+  const paymentMap = useMemo(() => {
+    const map = {};
+    for (const p of payments) {
+      if (!Array.isArray(p.studentIds)) continue;
+      for (const legajo of p.studentIds) {
+        const key = `${legajo}-${p.mes}`;
+        // Higher priority: verificado > pendiente > rechazado
+        const existing = map[key];
+        if (!existing || p.estado === 'verificado' || (p.estado === 'pendiente' && existing !== 'ok')) {
+          map[key] = p.estado === 'verificado' ? 'ok' : p.estado === 'pendiente' ? 'pen' : 'no';
+        }
+      }
+    }
+    return map;
+  }, [payments]);
+
   // Returns 'ok' | 'pen' | 'no'
   const gs = useCallback((legajo, mes) => {
-    const p = payments.find(pay =>
-      Array.isArray(pay.studentIds) && pay.studentIds.includes(legajo) && pay.mes === mes
-    );
-    if (!p) return 'no';
-    if (p.estado === 'verificado') return 'ok';
-    if (p.estado === 'pendiente') return 'pen';
-    return 'no';
-  }, [payments]);
+    return paymentMap[`${legajo}-${mes}`] || 'no';
+  }, [paymentMap]);
 
   const getStudentName = useCallback((legajo) => {
     const s = allStudents.find(st => st.legajo === legajo || String(st.legajo) === String(legajo));
@@ -422,7 +433,7 @@ export default function AdminView({
   }, [allStudents, gs, getCuota, dueMonths]);
 
   const filteredPayments = useMemo(() => {
-    return [...payments].filter(p => {
+    const result = [...payments].filter(p => {
       if (paymentSearch) {
         const q = normalizeStr(paymentSearch);
         const names = normalizeStr((p.studentIds || []).map(getStudentName).join(' '));
@@ -1644,12 +1655,6 @@ const FamilyCard = memo(function FamilyCard({ family, expanded, payments, gs, ge
       ? { label: 'Pendiente', bg: T.amberBg, color: T.amberText }
       : { label: 'Al día', bg: T.greenBg, color: T.greenText };
 
-  // Family payment history (any payment involving a family student)
-  const legajos = family.students.map(s => s.legajo);
-  const familyPayments = sortPaymentsNewestFirst(
-    payments.filter(p => (p.studentIds || []).some(id => legajos.includes(id)))
-  );
-
   return (
     <Card style={{ marginBottom: 10, overflow: 'hidden', borderLeft: `4px solid ${accentColor}` }}>
       {/* Collapsed header */}
@@ -1712,7 +1717,12 @@ const FamilyCard = memo(function FamilyCard({ family, expanded, payments, gs, ge
       </button>
 
       {/* Expanded detail */}
-      {expanded && (
+      {expanded && (() => {
+        const legajos = family.students.map(s => s.legajo);
+        const familyPayments = sortPaymentsNewestFirst(
+          payments.filter(p => (p.studentIds || []).some(id => legajos.includes(id)))
+        );
+        return (
         <div style={{ borderTop: `1px solid ${T.border}`, padding: '14px 16px', animation: 'fadeIn 0.2s ease' }}>
           {family.students.map((student, idx) => {
             const cuota = getCuota(student);
@@ -1818,7 +1828,8 @@ const FamilyCard = memo(function FamilyCard({ family, expanded, payments, gs, ge
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
     </Card>
   );
 });
@@ -1829,11 +1840,6 @@ const StudentRow = memo(function StudentRow({ student, expanded, payments, gs, g
   const owedMonths = dueMonths.filter(mes => gs(student.legajo, mes) === 'no');
   const hasDebt = cuota > 0 && owedMonths.length > 0;
   const hasPending = dueMonths.some(mes => gs(student.legajo, mes) === 'pen');
-
-  // Get payments for this student
-  const studentPayments = sortPaymentsNewestFirst(
-    payments.filter(p => (p.studentIds || []).includes(student.legajo))
-  );
 
   const colors = ['#43A047', '#7B1FA2', '#1565C0', '#E65100', '#00838F', '#AD1457'];
   const avatarColor = colors[student.legajo % colors.length] || T.green;
@@ -1916,7 +1922,11 @@ const StudentRow = memo(function StudentRow({ student, expanded, payments, gs, g
           </div>
 
           {/* Payment history */}
-          {studentPayments.length > 0 && (
+          {(() => {
+            const studentPayments = sortPaymentsNewestFirst(
+              payments.filter(p => (p.studentIds || []).includes(student.legajo))
+            );
+            return studentPayments.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: T.textMid, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
                 Historial de pagos
@@ -1942,7 +1952,8 @@ const StudentRow = memo(function StudentRow({ student, expanded, payments, gs, g
                 ))}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           <button
             onClick={onEdit}
@@ -2124,6 +2135,10 @@ function RateInput({ nivel, currentRate, allStudents, onSave }) {
 // ─── Debtors Modal ────────────────────────────────────────────────────────────
 
 function DebtorsModal({ debtors, onClose }) {
+  const [visibleCount, setVisibleCount] = useState(20);
+  const displayedDebtors = debtors.slice(0, visibleCount);
+  const remaining = debtors.length - visibleCount;
+
   return (
     <Overlay onClose={onClose}>
       <ModalHeader
@@ -2134,7 +2149,8 @@ function DebtorsModal({ debtors, onClose }) {
         {debtors.length === 0 ? (
           <EmptyState icon={<IconCheckCircle size={32} color={T.greenLight} />} text="Sin deudores. Todas las familias están al día." />
         ) : (
-          debtors.map((family, i) => (
+          <>
+          {displayedDebtors.map((family, i) => (
             <Card key={family.familiaId || i} style={{ marginBottom: 10, padding: '14px' }}>
               {/* Family header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
@@ -2204,7 +2220,21 @@ function DebtorsModal({ debtors, onClose }) {
                 ))}
               </div>
             </Card>
-          ))
+          ))}
+          {remaining > 0 && (
+            <button
+              onClick={() => setVisibleCount(v => v + 20)}
+              style={{
+                width: '100%', padding: '12px', borderRadius: 10,
+                border: `1.5px solid ${T.border}`, background: T.white,
+                color: T.textMid, fontSize: 13, fontWeight: 600,
+                cursor: 'pointer', fontFamily: T.font, marginTop: 4,
+              }}
+            >
+              Cargar más ({remaining} familias restantes)
+            </button>
+          )}
+          </>
         )}
       </div>
     </Overlay>
